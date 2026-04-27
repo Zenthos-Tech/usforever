@@ -1,12 +1,24 @@
-import AWS from 'aws-sdk';
+import {
+  RekognitionClient,
+  CreateCollectionCommand,
+  IndexFacesCommand,
+  SearchFacesByImageCommand,
+} from '@aws-sdk/client-rekognition';
 import { env } from './env';
 import { Wedding } from '../models/Wedding';
 import { Photo } from '../models/Photo';
 
-const rekognition = new AWS.Rekognition({
+// AWS SDK v3 Rekognition client. Replaces the legacy `aws-sdk` v2
+// `AWS.Rekognition` so the backend ships only one AWS SDK family.
+const rekognition = new RekognitionClient({
   region: env.AWS_REGION,
-  accessKeyId: env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+  credentials:
+    env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY
+      ? {
+          accessKeyId: env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+        }
+      : undefined,
 });
 
 const normalizePhone = (v: any) => String(v ?? '').replace(/[^\d]/g, '').trim();
@@ -28,9 +40,12 @@ export const ensureWeddingCollection = async (weddingId: string): Promise<string
   const collectionName = buildCollectionName(wedding as any);
 
   try {
-    await rekognition.createCollection({ CollectionId: collectionName }).promise();
+    await rekognition.send(new CreateCollectionCommand({ CollectionId: collectionName }));
   } catch (err: any) {
-    if (err?.code !== 'ResourceAlreadyExistsException') throw err;
+    // v3 surfaces error codes via err.name (was err.code in v2).
+    if (err?.name !== 'ResourceAlreadyExistsException' && err?.code !== 'ResourceAlreadyExistsException') {
+      throw err;
+    }
   }
 
   await Wedding.findByIdAndUpdate(weddingId, { collection_name: collectionName });
@@ -46,14 +61,16 @@ export const indexPhotoIntoCollection = async (params: {
   const collectionName = await ensureWeddingCollection(weddingId);
   const externalImageId = `photo_${photoId}`;
 
-  const result = await rekognition.indexFaces({
-    CollectionId: collectionName,
-    Image: { S3Object: { Bucket: env.AWS_BUCKET, Name: imageKey } },
-    ExternalImageId: externalImageId,
-    MaxFaces: 10,
-    QualityFilter: 'AUTO',
-    DetectionAttributes: [],
-  }).promise();
+  const result = await rekognition.send(
+    new IndexFacesCommand({
+      CollectionId: collectionName,
+      Image: { S3Object: { Bucket: env.AWS_BUCKET, Name: imageKey } },
+      ExternalImageId: externalImageId,
+      MaxFaces: 10,
+      QualityFilter: 'AUTO',
+      DetectionAttributes: [],
+    })
+  );
 
   const indexedCount = Array.isArray(result.FaceRecords) ? result.FaceRecords.length : 0;
 
@@ -81,13 +98,15 @@ export const searchFaceInWeddingCollection = async (params: {
   let collectionName = (wedding.collection_name || '').trim();
   if (!collectionName) collectionName = await ensureWeddingCollection(weddingId);
 
-  const result = await rekognition.searchFacesByImage({
-    CollectionId: collectionName,
-    Image: { Bytes: imageBuffer },
-    FaceMatchThreshold: threshold,
-    MaxFaces: maxFaces,
-    QualityFilter: 'AUTO',
-  }).promise();
+  const result = await rekognition.send(
+    new SearchFacesByImageCommand({
+      CollectionId: collectionName,
+      Image: { Bytes: imageBuffer },
+      FaceMatchThreshold: threshold,
+      MaxFaces: maxFaces,
+      QualityFilter: 'AUTO',
+    })
+  );
 
   const photoIds = Array.from(new Set(
     (result.FaceMatches || [])

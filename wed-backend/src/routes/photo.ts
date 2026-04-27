@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { env } from '../config/env';
-import { buildSignedReadUrl, buildSignedPutUrl, deleteS3Object, s3Legacy } from '../config/s3';
+import { buildSignedReadUrl, buildSignedPutUrl, deleteS3Object, headS3Object } from '../config/s3';
 import { indexPhotoIntoCollection } from '../config/rekognition';
 import { Wedding } from '../models/Wedding';
 import { Album } from '../models/Album';
@@ -137,8 +137,8 @@ router.post('/sync-sizes', async (req: Request, res: Response) => {
       const key = String(photo.image_url || '').trim();
       if (!key) { skipped++; continue; }
       try {
-        const head = await s3Legacy.headObject({ Bucket: env.AWS_BUCKET, Key: key }).promise();
-        const bytes = Number(head.ContentLength || 0);
+        const head = await headS3Object(key);
+        const bytes = head.contentLength;
         if (bytes > 0) {
           await Photo.updateOne({ _id: photo._id }, { $set: { size_bytes: bytes } });
           updated++;
