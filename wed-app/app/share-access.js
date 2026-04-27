@@ -315,7 +315,7 @@ export default function ShareAccessModal({
     if (!resolvedAlbumId) {
       Alert.alert(
         'Album not ready',
-        `Your current album id is not a Strapi numeric id.\n\nFix: ensure folders come from server albums.\n\nSelected: ${String(albumIdProp)}`
+        'We couldn’t find this album on the server yet. Please refresh and try again.'
       );
       return;
     }
