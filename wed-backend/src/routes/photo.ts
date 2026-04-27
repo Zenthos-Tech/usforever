@@ -280,8 +280,10 @@ router.get('/', async (req: Request, res: Response) => {
     const uid = String(req.query?.userId || req.query?.uploaded_by || '').trim();
     if (uid) filter.uploadedById = uid;
 
-    // get total count before applying cursor filter
-    const totalCount = await Photo.countDocuments(filter);
+    // Only run countDocuments on the first page (no cursor). On a 10k-photo
+    // album this skips an expensive query for every "load more" tap; the
+    // client already has the count from page 1 of the session.
+    const totalCount = cursor ? null : await Photo.countDocuments(filter);
 
     // cursor is the _id of the last item from the previous page
     // since we sort by createdAt desc, we fetch items created before the cursor item

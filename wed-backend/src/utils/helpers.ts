@@ -7,20 +7,6 @@ export const toBytes = (v: any): number => {
   return Math.floor(n);
 };
 
-export const toAlbumId = (album: any): number | null => {
-  if (album == null) return null;
-  if (typeof album === 'number') return album;
-  if (typeof album === 'object' && album.id) return Number(album.id);
-  return null;
-};
-
-export const toUserId = (user: any): number | null => {
-  if (user == null) return null;
-  if (typeof user === 'number') return user;
-  if (typeof user === 'object' && user.id) return Number(user.id);
-  return null;
-};
-
 export const formatUploadedLabel = (iso?: string | Date | null): string | null => {
   if (!iso) return null;
   const dt = new Date(iso);
