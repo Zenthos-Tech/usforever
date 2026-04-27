@@ -8,13 +8,17 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { API_URL } from '../utils/api';
 
 const WeddingContext = createContext(undefined);
 
 const STORAGE_KEY = 'USFOREVER_WEDDING_CTX_V1';
 const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
 
-const API_BASE = String(process.env.EXPO_PUBLIC_API_BASE_URL || '').trim().replace(/\/+$/, '');
+// Single source of truth for the backend base URL — `utils/api.ts` already
+// resolves the env var. API_URL ends with `/api`, so strip it before tacking
+// on these absolute `/api/...` endpoints.
+const API_BASE = String(API_URL || '').replace(/\/+$/, '').replace(/\/api$/, '');
 
 const ENDPOINTS = {
   getWedding: '/api/weddings/context',
