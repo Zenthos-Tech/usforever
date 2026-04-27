@@ -31,4 +31,9 @@ const ShareLinkSchema = new Schema<IShareLink>(
   { timestamps: true }
 );
 
+// Auto-delete share links once their `expiresAt` has passed. Mongo's TTL
+// monitor only deletes documents where the field is a Date in the past, so
+// "no limit" links (expiresAt: null) are kept indefinitely as before.
+ShareLinkSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
 export const ShareLink = mongoose.model<IShareLink>('ShareLink', ShareLinkSchema);

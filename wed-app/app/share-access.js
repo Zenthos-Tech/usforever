@@ -173,11 +173,12 @@ export default function ShareAccessModal({
     const direct = toNumericId(albumIdProp);
     if (direct) return direct;
 
+    // Fallback: look the album up by name in WeddingContext's
+    // `{ wedding: { albumId }, engagement: { albumId } }` shape.
     const targetName = String(albumName || '').trim().toLowerCase();
     const albums = weddingData?.albums;
-    if (targetName && Array.isArray(albums)) {
-      const hit = albums.find((a) => String(a?.name || '').trim().toLowerCase() === targetName);
-      const hitId = toNumericId(hit?.id || hit?._id);
+    if (targetName && albums && typeof albums === 'object') {
+      const hitId = toNumericId(albums?.[targetName]?.albumId);
       if (hitId) return hitId;
     }
     return null;

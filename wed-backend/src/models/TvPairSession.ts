@@ -27,4 +27,9 @@ const TvPairSessionSchema = new Schema<ITvPairSession>(
   { timestamps: true }
 );
 
+// Drop pairing rows that haven't been touched in 30 days. Live PAIRED sessions
+// have updatedAt refreshed on every heartbeat (`tvHeartbeat`), so this only
+// reaps abandoned WAITING / EXPIRED / CANCELLED rows.
+TvPairSessionSchema.index({ updatedAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 30 });
+
 export const TvPairSession = mongoose.model<ITvPairSession>('TvPairSession', TvPairSessionSchema);
