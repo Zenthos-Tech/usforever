@@ -16,7 +16,23 @@ import weddingRoutes from './routes/wedding';
 import contactRoutes from './routes/contact';
 
 const app = express();
-const upload = multer({ dest: '/tmp/uploads/' });
+
+// Selfie uploads. We cap the request size, restrict mime to image/* (the only
+// accepted type — Rekognition rejects anything else anyway), and let multer
+// stream the bytes to /tmp. Handlers must unlink the temp file when done.
+const upload = multer({
+  dest: '/tmp/uploads/',
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10 MB — Rekognition's max for Bytes input
+    files: 1,
+  },
+  fileFilter: (_req, file, cb) => {
+    if (!file || !file.mimetype || !file.mimetype.startsWith('image/')) {
+      return cb(new Error('Only image uploads are allowed') as any);
+    }
+    cb(null, true);
+  },
+});
 
 app.use(cors({
   origin: '*',
