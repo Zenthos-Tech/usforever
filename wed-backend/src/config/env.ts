@@ -47,6 +47,9 @@ export const env = {
   APP_SCHEME: envStr('APP_SCHEME', 'usforever'),
   EXPO_GO_BASE: envStr('EXPO_GO_BASE'),
   PUBLIC_APP_BASE_URL: envStr('PUBLIC_APP_BASE_URL'),
+  // Comma-separated list of allowed CORS origins. Empty in development
+  // (allows all); must be set in production.
+  CORS_ALLOWED_ORIGINS: envStr('CORS_ALLOWED_ORIGINS'),
 
   // TV
   TV_PAIR_TTL_MINUTES: envInt('TV_PAIR_TTL_MINUTES', 5),
