@@ -24,12 +24,12 @@ Severity guide: **High** = exploitable / data loss / app crash, **Med** = real b
 - [x] **[Severity: Low]** `wed-app/app.json:88-94` — trailing comma after the `extra:{...}` object. Strict JSON parsers reject this; many tools tolerate it but a few do not.
 - [ ] **[Severity: Low]** `wed-app/context/ImagesContext.js:126` — `console.log(paginationByAlbum,'PAGINATION')` runs every render. Remove or guard with `__DEV__`.
 - [x] **[Severity: Low]** `wed-app/app/share-access.js:317` — error `Alert.alert('Album not ready', ...${String(albumIdProp)})` references "Strapi numeric id", a stale message from the old backend.
-- [ ] **[Severity: Low]** `wed-app/context/ImagesContext.js:1-9` — header comment still claims the API matches "YOUR Strapi routes/controllers". The backend was rewritten to Express; comments mislead future readers.
+- [x] **[Severity: Low]** `wed-app/context/ImagesContext.js:1-9` — header comment still claims the API matches "YOUR Strapi routes/controllers". The backend was rewritten to Express; comments mislead future readers.
 
 ### Code quality / design
 
 - [ ] **[Severity: Med]** `wed-app/app/create-album.js`, `DynamicGallery.js`, `DynamicImagePreview.js`, `face-result.js` — all > 1300 lines, with networking, animation, sizing tokens, and styling inlined. Extracting hooks/components would make these reviewable.
-- [ ] **[Severity: Med]** `wed-app/app/share-link.js:209,253-254` and many other places — full URL + token printed via `console.log`/`console.warn`. Strip in production builds.
+- [x] **[Severity: Med]** `wed-app/app/share-link.js:209,253-254` and many other places — full URL + token printed via `console.log`/`console.warn`. Strip in production builds.
 - [ ] **[Severity: Low]** `wed-app/app/setup-wedding.js`, multiple files — `process.env.EXPO_PUBLIC_API_*` env vars referenced inconsistently across the codebase. Consolidate to one helper.
 - [ ] **[Severity: Low]** `wed-app/app/share-link.js:65-74` — date math (`'3days'`, `'nolimit'`) duplicated in `share-access.js` (`getDurationLabel`). Keep in one util.
 
