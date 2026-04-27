@@ -76,8 +76,13 @@ router.put('/selections', authRequired, async (req: AuthRequest, res: Response) 
 // DELETE /api/tv/selections/:photoId (auth required — remove one photo from selections)
 router.delete('/selections/:photoId', authRequired, async (req: AuthRequest, res: Response) => {
   try {
-    const { weddingId } = req.body || req.query || {};
-    const wid = String(weddingId || '').trim();
+    // Read weddingId from body or query — `req.body || req.query` short-circuits
+    // because Express provides an empty {} body even on bodyless DELETEs.
+    const wid = String(
+      (req.body && req.body.weddingId) ||
+      (req.query && (req.query as any).weddingId) ||
+      ''
+    ).trim();
     const photoId = String(req.params.photoId || '').trim();
     if (!wid) return res.status(400).json({ error: 'weddingId is required' });
     if (!photoId) return res.status(400).json({ error: 'photoId is required' });
