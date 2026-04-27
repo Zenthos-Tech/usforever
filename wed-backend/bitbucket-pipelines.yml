@@ -1,10 +1,31 @@
-image: atlassian/default-image:4
+image: node:20
+
+definitions:
+  caches:
+    npm: $HOME/.npm
 
 pipelines:
+  default:
+    - step:
+        name: Build & type-check
+        caches:
+          - npm
+        script:
+          - npm ci
+          - npm run build
   branches:
-    master:
+    main:
       - step:
-          name: Deploy to Server
+          name: Build & type-check
+          caches:
+            - npm
+          script:
+            - npm ci
+            - npm run build
+      - step:
+          name: Deploy to server
+          deployment: production
+          trigger: manual
           script:
             - pipe: atlassian/ssh-run:0.8.1
               variables:
@@ -12,16 +33,11 @@ pipelines:
                 SERVER: $SERVER_IP
                 SSH_KEY: $SSH_KEY
                 COMMAND: |
-                  cd /var/www/vendoo
-
-                  php artisan down --retry=30 || true
-
-                  git pull origin master
-
-                  composer install --no-dev --optimize-autoloader
-
-                  php artisan migrate --force
-
-                  php artisan optimize
-
-                  php artisan up
+                  set -e
+                  cd /var/www/wed-backend
+                  git fetch --all
+                  git reset --hard origin/main
+                  npm ci --omit=dev
+                  npm run build
+                  # Restart with your supervisor of choice (systemd / pm2 / forever)
+                  pm2 reload wed-backend || pm2 start dist/index.js --name wed-backend

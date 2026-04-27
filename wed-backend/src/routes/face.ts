@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import fs from 'fs';
+import { promises as fsp } from 'fs';
 import { searchFaceInWeddingCollection } from '../config/rekognition';
 import { buildSignedReadUrl } from '../config/s3';
 import { Photo } from '../models/Photo';
@@ -8,14 +8,14 @@ import { toBytes, formatUploadedLabel } from '../utils/helpers';
 const router = Router();
 
 router.post('/search', async (req: Request, res: Response) => {
+  const file = (req as any).file;
   try {
     const weddingId = String(req.body?.weddingId || '').trim();
     if (!weddingId) return res.status(400).json({ error: 'weddingId is required' });
 
-    const file = (req as any).file;
     if (!file) return res.status(400).json({ error: 'image file is required' });
 
-    const imageBuffer = fs.readFileSync(file.path);
+    const imageBuffer = await fsp.readFile(file.path);
     const { faceMatches, photoIds, collectionName } = await searchFaceInWeddingCollection({ weddingId, imageBuffer, threshold: 70, maxFaces: 20 });
 
     if (!photoIds.length) return res.json({ data: { success: true, collectionName, count: 0, photos: [] } });
@@ -47,7 +47,17 @@ router.post('/search', async (req: Request, res: Response) => {
     }));
 
     res.json({ data: { success: true, collectionName, count: result.length, photos: result } });
-  } catch (err: any) { console.error('face.search error', err); res.status(500).json({ error: err.message }); }
+  } catch (err: any) {
+    console.error('face.search error', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    // Always remove the multer-uploaded temp file. Swallow errors —
+    // /tmp on most hosts is volatile anyway, and failure to clean up
+    // shouldn't bubble up to the client.
+    if (file?.path) {
+      try { await fsp.unlink(file.path); } catch {}
+    }
+  }
 });
 
 export default router;

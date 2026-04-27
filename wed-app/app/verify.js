@@ -271,11 +271,18 @@ export default function VerifyScreen() {
         setWeddingData({ weddingId: String(weddingIdFromApi) });
       }
 
-      // Always fetch profile photo from backend when we have a weddingId
+      // Always fetch profile photo from backend when we have a weddingId.
+      // Send the bearer token we just stored above so the backend can lock
+      // /photos/profile-photo down without breaking the login flow.
       let profilePhotoSignedUrl = '';
       if (isNumericId(weddingIdFromApi)) {
         try {
-          const photoRes = await fetch(`${API_URL}/photos/profile-photo?weddingId=${weddingIdFromApi}`);
+          const photoRes = await fetch(
+            `${API_URL}/photos/profile-photo?weddingId=${weddingIdFromApi}`,
+            json?.jwt
+              ? { headers: { Authorization: `Bearer ${json.jwt}` } }
+              : undefined
+          );
           const photoData = await photoRes.json();
           profilePhotoSignedUrl = photoData?.data?.url || '';
         } catch {}

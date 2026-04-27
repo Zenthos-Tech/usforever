@@ -7,7 +7,7 @@ import { Wedding } from '../models/Wedding';
 import { Album } from '../models/Album';
 import { Photo } from '../models/Photo';
 import { User } from '../models/User';
-import { toBytes, formatUploadedLabel, slugify, normalizePhone, safeExtFromName, buildCoupleFolder, generateS3Key } from '../utils/helpers';
+import { toBytes, formatUploadedLabel, slugify, normalizePhone, safeExtFromName, buildCoupleFolder, generateS3Key, isValidObjectId } from '../utils/helpers';
 
 const router = Router();
 
@@ -31,6 +31,7 @@ router.post('/presign', async (req: Request, res: Response) => {
     const phone = normalizePhone(wedding.phone);
     const coupleFolder = buildCoupleFolder(coupleSlug, phone, 0);
 
+    if (!isValidObjectId(albumId)) return res.status(400).json({ error: 'invalid albumId' });
     const album = await Album.findById(albumId).select('weddingId title').lean();
     if (!album) return res.status(400).json({ error: 'album not found' });
     if (album.weddingId !== String(weddingId)) return res.status(400).json({ error: 'album does not belong to this weddingId' });
@@ -156,6 +157,7 @@ router.post('/check-duplicate', async (req: Request, res: Response) => {
     const { albumId, weddingId, fileName, checksum, size_bytes } = req.body || {};
     if (!albumId) return res.status(400).json({ error: 'albumId is required' });
     if (!weddingId) return res.status(400).json({ error: 'weddingId is required' });
+    if (!isValidObjectId(albumId)) return res.status(400).json({ error: 'invalid albumId' });
 
     const album = await Album.findById(albumId).select('weddingId').lean();
     if (!album) return res.status(400).json({ error: 'album not found' });
