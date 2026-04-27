@@ -1,0 +1,456 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #f7edef;
+}
+
+body {
+  overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f7edef;
+}
+
+button {
+  font: inherit;
+}
+
+.tv-album-page {
+  width: 100vw;
+  height: 100vh;
+  background: #f7edef;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.tv-album-safe-area {
+  width: 100%;
+  height: 100%;
+  padding: 16px 28px;
+  padding-top: 166px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+}
+
+.tv-album-topbar {
+  position: fixed;
+  top: calc(var(--safe-top) + 22px);
+  left: calc(var(--safe-left) + 34px);
+  right: calc(var(--safe-right) + 34px);
+  height: 108px;
+  z-index: 1000;
+  background: #ecebec;
+  border-radius: 999px;
+  padding: 0 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tv-album-brand-image {
+  height: 52px;
+  width: auto;
+  display: block;
+}
+
+/* gap replaced with margins for LG compatibility */
+.tv-album-meta {
+  display: flex;
+  align-items: center;
+}
+
+.tv-album-meta-item {
+  margin-right: 24px;
+}
+
+.tv-album-meta-item,
+.tv-album-logout {
+  display: flex;
+  align-items: center;
+  color: #666263;
+  font-size: 22px;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  padding: 6px 16px;
+  transition: all 0.15s ease;
+}
+
+.tv-album-logout.is-focused {
+  color: #ffffff;
+  border-color: #DE4765;
+  background: #DE4765;
+  border-radius: 14px;
+}
+
+.tv-album-logout.is-focused .tv-album-meta-icon {
+  filter: brightness(0) invert(1);
+}
+
+/* icon-to-text spacing scoped to topbar */
+.tv-album-meta .tv-album-meta-icon {
+  margin-right: 8px;
+}
+
+.tv-album-meta-icon {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+/* HEADER BELOW TOPBAR */
+.tv-album-header {
+  width: min(82%, 980px);
+  margin: 90px auto 22px;
+  display: grid;
+  grid-template-columns: 180px 1fr 180px;
+  align-items: center;
+  column-gap: 16px;
+  position: relative;
+  z-index: 20;
+  text-align: center;
+}
+
+.tv-album-circle-btn {
+  width: 54px;
+  height: 54px;
+  border-radius: 999px;
+  border: 0;
+  background: #ffffff;
+  color: #8c878a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+.tv-album-circle-btn img {
+  width: 22px;
+  height: 22px;
+}
+
+.tv-album-title-wrap {
+  text-align: center;
+  min-width: 0;
+}
+
+.tv-album-title {
+  margin: 0;
+  color: #f2447b;
+  font-size: clamp(34px, 3vw, 48px);
+  line-height: 1.1;
+  font-weight: 700;
+  text-shadow: 0.5px 0 0 currentColor, -0.3px 0 0 currentColor;
+}
+
+.tv-album-subtitle {
+  margin-top: 12px;
+  color: #aaa3a7;
+  font-size: clamp(16px, 1.1vw, 20px);
+  line-height: 1.1;
+  font-weight: 500;
+}
+
+.tv-album-slideshow-btn {
+  width: 200px;
+  height: 54px;
+  padding: 0 20px;
+  border-radius: 12px;
+  border: 1px solid #cfc8cc;
+  background: transparent;
+  color: #666263;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: clamp(14px, 1vw, 17px);
+  font-weight: 700;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.tv-album-slideshow-btn .tv-album-slideshow-icon {
+  margin-right: 8px;
+}
+
+.tv-slideshow-focused {
+  display: none;
+}
+
+.tv-album-slideshow-btn.is-focused .tv-slideshow-default,
+.tv-album-slideshow-btn:focus-visible .tv-slideshow-default,
+.tv-album-slideshow-btn:focus .tv-slideshow-default {
+  display: none;
+}
+
+.tv-album-slideshow-btn.is-focused .tv-slideshow-focused,
+.tv-album-slideshow-btn:focus-visible .tv-slideshow-focused,
+.tv-album-slideshow-btn:focus .tv-slideshow-focused {
+  display: block;
+}
+
+.tv-album-slideshow-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+/* GRID */
+.tv-photo-grid {
+  width: min(90%, 1400px);
+  margin: 36px auto 0;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  column-gap: 20px;
+  row-gap: 20px;
+  position: relative;
+  z-index: 1;
+}
+
+.tv-photo-card {
+  position: relative;
+  border: 0;
+  padding: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #ffffff;
+  cursor: pointer;
+  aspect-ratio: 1.5 / 1;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+  opacity: 0.92;
+}
+
+.tv-photo-card:focus,
+.tv-album-circle-btn:focus,
+.tv-photo-card:focus,
+.tv-album-circle-btn:focus {
+  outline: none;
+}
+
+.tv-photo-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* FOCUS */
+.tv-photo-card.is-focused,
+.tv-album-circle-btn.is-focused,
+.tv-album-slideshow-btn.is-focused,
+.tv-photo-card:focus-visible,
+.tv-album-circle-btn:focus-visible,
+.tv-album-slideshow-btn:focus-visible {
+  transform: scale(1.08);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.16);
+  opacity: 1;
+  z-index: 5;
+}
+
+.tv-album-circle-btn.is-focused,
+.tv-album-circle-btn:focus-visible {
+  background: #fff7f9;
+}
+
+.tv-album-slideshow-btn.is-focused,
+.tv-album-slideshow-btn:focus-visible,
+.tv-album-slideshow-btn:focus,
+.tv-album-slideshow-btn:active {
+  background: #DE4765;
+  border-color: #DE4765;
+  color: #ffffff;
+}
+.tv-couple-name {
+  color: #191919;
+  font-weight: 600;
+  font-size: 22px;
+}
+
+
+/* 1366x768 */
+@media (max-width: 1366px), (max-height: 768px) {
+  .tv-album-topbar {
+    top: calc(var(--safe-top) + 18px);
+    left: calc(var(--safe-left) + 26px);
+    right: calc(var(--safe-right) + 26px);
+    height: 96px;
+    padding: 0 28px;
+  }
+
+  .tv-album-brand-image {
+    height: 46px;
+  }
+
+  .tv-album-meta-item {
+    margin-right: 44px;
+  }
+
+  .tv-album-meta-item,
+  .tv-album-logout {
+    font-size: 18px;
+  }
+
+  .tv-couple-name {
+    font-size: 18px;
+  }
+
+  .tv-album-title {
+    font-size: 32px;
+  }
+
+  .tv-album-subtitle {
+    font-size: 17px;
+  }
+}
+
+/* 1280x720 */
+@media (max-width: 1280px), (max-height: 720px) {
+  .tv-album-safe-area {
+    padding: 18px 26px;
+    padding-top: 148px;
+  }
+
+  .tv-album-topbar {
+    top: calc(var(--safe-top) + 16px);
+    left: calc(var(--safe-left) + 22px);
+    right: calc(var(--safe-right) + 22px);
+    height: 90px;
+    padding: 0 24px;
+  }
+
+  .tv-album-brand-image {
+    height: 42px;
+  }
+
+  .tv-album-meta-item {
+    margin-right: 44px;
+  }
+
+  .tv-album-meta-item,
+  .tv-album-logout {
+    font-size: 15px;
+  }
+
+  .tv-album-meta .tv-album-meta-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .tv-album-meta-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .tv-couple-name {
+    font-size: 17px;
+  }
+
+  .tv-album-header {
+    width: min(82%, 980px);
+    grid-template-columns: 160px 1fr 160px;
+    column-gap: 12px;
+    margin: 72px auto 18px;
+  }
+
+  .tv-album-circle-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .tv-album-circle-btn img {
+    width: 18px;
+    height: 18px;
+  }
+
+  .tv-album-title {
+    font-size: 28px;
+  }
+
+  .tv-album-subtitle {
+    font-size: 16px;
+    margin-top: 10px;
+  }
+
+.tv-album-slideshow-btn {
+  min-width: auto;
+  width: 170px;
+  height: 44px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+.tv-album-slideshow-btn .tv-album-slideshow-icon {
+  margin-right: 3px;
+}
+
+  .tv-album-slideshow-icon {
+    width: 11px;
+    height: 11px;
+  }
+
+  .tv-photo-grid {
+    width: min(92%, 1400px);
+    column-gap: 16px;
+    row-gap: 16px;
+  }
+}
+
+/* 4K TVs */
+@media (min-width: 2560px) and (min-height: 1400px) {
+  .tv-album-topbar {
+    height: 120px;
+    padding: 0 44px;
+  }
+
+  .tv-album-brand-image {
+    height: 58px;
+  }
+
+  .tv-album-header {
+    width: min(80%, 1200px);
+    grid-template-columns: 56px 1fr 200px;
+    margin-bottom: 28px;
+  }
+
+  .tv-album-circle-btn {
+    width: 46px;
+    height: 46px;
+  }
+
+  .tv-album-circle-btn img {
+    width: 20px;
+    height: 20px;
+  }
+
+  .tv-album-title {
+    font-size: 42px;
+  }
+
+  .tv-album-subtitle {
+    font-size: 22px;
+    margin-top: 14px;
+  }
+
+  .tv-album-slideshow-btn {
+    width: 190px;
+    height: 44px;
+    font-size: 15px;
+  }
+
+  .tv-photo-grid {
+    width: min(88%, 1600px);
+    column-gap: 22px;
+    row-gap: 22px;
+  }
+}

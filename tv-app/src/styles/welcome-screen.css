@@ -1,0 +1,289 @@
+@font-face {
+  font-family: 'Tangerine';
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url('../assets/Tangerine-Bold.ttf') format('truetype');
+}
+
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --safe-top: max(16px, env(safe-area-inset-top, 0px));
+  --safe-right: max(18px, env(safe-area-inset-right, 0px));
+  --safe-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  --safe-left: max(18px, env(safe-area-inset-left, 0px));
+
+  --page-pad-x: clamp(18px, 2.5vw, 44px);
+  --page-pad-y: clamp(16px, 2.8vh, 34px);
+
+  --logo-h: clamp(36px, 3vw, 58px);
+
+  --card-w: min(92vw, 620px);
+  --card-min-h: clamp(220px, 30vh, 320px);
+  --card-pad-y: clamp(20px, 2.2vh, 30px);
+  --card-pad-x: clamp(20px, 2vw, 30px);
+  --card-radius: clamp(18px, 1.8vw, 28px);
+
+  --script-size: clamp(30px, 2.7vw, 44px);
+  --title-size: clamp(32px, 2.8vw, 46px);
+  --subtitle-size: clamp(15px, 1.1vw, 18px);
+
+  --btn-w: min(82%, 420px);
+  --btn-min-w: 200px;
+  --btn-h: clamp(46px, 5.6vh, 58px);
+  --btn-font: clamp(15px, 1.2vw, 19px);
+
+  --bg-blur: clamp(4px, 0.4vw, 8px);
+  --bg-scale: 1.15;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+}
+
+.tv-welcome-page {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #f7edef;
+}
+
+.tv-welcome-bg-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  z-index: 0;
+  filter: blur(var(--bg-blur));
+  transform: scale(var(--bg-scale));
+  transform-origin: center;
+  will-change: transform;
+}
+
+.tv-welcome-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.72) 0%, rgba(253, 232, 232, 0.60) 100%);
+}
+
+.tv-safe-area,
+.tv-welcome-header,
+.tv-welcome-card {
+  position: relative;
+  z-index: 2;
+}
+
+.tv-safe-area {
+  width: 100%;
+  height: 100%;
+  padding:
+    calc(var(--safe-top) + var(--page-pad-y))
+    calc(var(--safe-right) + var(--page-pad-x))
+    calc(var(--safe-bottom) + var(--page-pad-y))
+    calc(var(--safe-left) + var(--page-pad-x));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tv-welcome-header {
+  position: absolute;
+  top: calc(var(--safe-top) + 36px);
+  right: calc(var(--safe-right) + 52px);
+}
+
+.tv-welcome-logo {
+  height: var(--logo-h);
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+
+.tv-welcome-card {
+  width: clamp(460px, 40vw, 620px);
+  min-height: clamp(220px, 28vh, 340px);
+  padding: 36px 40px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+  text-align: center;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  /* gap replaced with margins for LG compatibility */
+}
+
+.tv-welcome-script {
+  margin: 0 0 10px;
+  font-family: 'Tangerine', cursive;
+  font-weight: 700;
+  font-size: var(--script-size);
+  line-height: 1.05;
+  color: #f96a86;
+}
+
+.tv-welcome-title {
+  margin: 0 0 10px;
+  font-size: var(--title-size);
+  line-height: 1.18;
+  font-weight: 700;
+  color: #666263;
+  max-width: 94%;
+}
+
+.tv-welcome-subtitle {
+  margin: 2px 0 16px;
+  font-size: var(--subtitle-size);
+  line-height: 1.35;
+  color: #7a7a7a;
+  max-width: 92%;
+}
+
+.tv-welcome-enter-btn {
+  width: var(--btn-w);
+  min-width: var(--btn-min-w);
+  height: var(--btn-h);
+  margin-top: 8px;
+  border: none;
+  outline: none;
+  border-radius: 12px;
+background: #F96A86;
+color:#FFFFFF;
+
+  font-size: var(--btn-font);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+  flex: 0 0 auto;
+}
+
+.tv-welcome-enter-btn:focus {
+  outline: none;
+  box-shadow: none;
+  transform: scale(1.05);
+}
+
+.tv-welcome-enter-btn:active {
+  transform: scale(0.98);
+}
+
+/* 1366x768 and similar TVs */
+@media (max-width: 1366px), (max-height: 768px) {
+  :root {
+    --card-w: min(94vw, 560px);
+    --card-min-h: 220px;
+    --card-pad-y: 18px;
+    --card-pad-x: 20px;
+
+    --script-size: 32px;
+    --title-size: 30px;
+    --subtitle-size: 14px;
+
+    --btn-w: min(82%, 380px);
+    --btn-min-w: 190px;
+    --btn-h: 48px;
+    --btn-font: 15px;
+
+    --logo-h: 38px;
+  }
+}
+
+/* 1280x720 TVs - keep it big */
+@media (max-width: 1280px), (max-height: 720px) {
+  :root {
+    --page-pad-x: 14px;
+    --page-pad-y: 12px;
+
+    --card-w: min(95vw, 520px);
+    --card-min-h: 210px;
+    --card-pad-y: 16px;
+    --card-pad-x: 18px;
+
+    --script-size: 30px;
+    --title-size: 28px;
+    --subtitle-size: 14px;
+
+    --btn-w: min(82%, 360px);
+    --btn-min-w: 180px;
+    --btn-h: 46px;
+    --btn-font: 15px;
+
+    --logo-h: 34px;
+    --bg-scale: 1.08;
+  }
+
+  .tv-welcome-card {
+    width: clamp(420px, 44vw, 560px);
+    padding: 30px 34px;
+  }
+
+  .tv-welcome-subtitle {
+    margin-bottom: 8px;
+  }
+}
+
+/* smaller / short TVs */
+@media (max-width: 1024px), (max-height: 600px) {
+  :root {
+    --card-w: min(96vw, 440px);
+    --card-min-h: 180px;
+    --card-pad-y: 14px;
+    --card-pad-x: 14px;
+
+    --script-size: 26px;
+    --title-size: 22px;
+    --subtitle-size: 12px;
+
+    --btn-w: min(82%, 300px);
+    --btn-min-w: 160px;
+    --btn-h: 40px;
+    --btn-font: 13px;
+
+    --logo-h: 30px;
+  }
+
+  .tv-welcome-card {
+    width: clamp(340px, 80vw, 460px);
+    padding: 18px 20px;
+  }
+
+  .tv-welcome-subtitle {
+    margin: 2px 0 6px;
+  }
+}
+
+/* 4K TVs */
+@media (min-width: 2560px) and (min-height: 1400px) {
+  :root {
+    --logo-h: 64px;
+    --card-w: min(40vw, 700px);
+    --card-min-h: 300px;
+    --card-pad-y: 28px;
+    --card-pad-x: 30px;
+
+    --script-size: 50px;
+    --title-size: 56px;
+    --subtitle-size: 18px;
+
+    --btn-w: min(82%, 500px);
+    --btn-h: 66px;
+    --btn-font: 20px;
+  }
+}

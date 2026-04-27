@@ -1,0 +1,478 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --safe-top: max(16px, env(safe-area-inset-top, 0px));
+  --safe-right: max(18px, env(safe-area-inset-right, 0px));
+  --safe-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  --safe-left: max(18px, env(safe-area-inset-left, 0px));
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #f7edef;
+}
+
+body {
+  overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #2f2d31;
+}
+
+.tv-gallery-page {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  background: #f7edef;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.tv-gallery-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  z-index: 0;
+  transform: translateZ(0);
+}
+
+.tv-gallery-motion-layer {
+  position: relative;
+  z-index: 1;
+  width: 100vw;
+  height: 100vh;
+}
+
+.tv-gallery-safe-area {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+}
+
+.tv-gallery-scroll-area {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-top: calc(var(--safe-top) + 22px + 108px + 28px);
+  padding-left: calc(var(--safe-left) + 34px);
+  padding-right: calc(var(--safe-right) + 34px);
+  padding-bottom: calc(var(--safe-bottom) + 40px);
+}
+
+.tv-gallery-topbar {
+  position: absolute;
+  top: calc(var(--safe-top) + 22px);
+  left: calc(var(--safe-left) + 34px);
+  right: calc(var(--safe-right) + 34px);
+  height: 108px;
+  z-index: 10;
+  background: #ecebec;
+  border-radius: 999px;
+  padding: 0 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tv-gallery-brand-image {
+  height: 52px;
+  width: auto;
+  display: block;
+}
+
+/* gap replaced with margin for LG compatibility */
+.tv-gallery-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.tv-gallery-meta-item {
+  margin-right: 24px;
+}
+
+
+.tv-gallery-meta-item,
+.tv-gallery-logout {
+  display: flex;
+  align-items: center;
+  color: #666263;
+  font-size: 22px;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  padding: 6px 16px;
+  transition: all 0.15s ease;
+}
+
+.tv-gallery-logout.is-focused {
+  color: #ffffff;
+  border-color: #DE4765;
+  background: #DE4765;
+  border-radius: 14px;
+}
+
+.tv-gallery-logout.is-focused .tv-gallery-meta-icon {
+  filter: brightness(0) invert(1);
+}
+
+
+.tv-gallery-meta .tv-gallery-meta-icon {
+  margin-right: 8px;
+}
+
+.tv-gallery-meta-icon {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.tv-couple-name {
+  color: #191919;
+  font-weight: 600;
+  font-size: 22px;
+}
+
+.tv-gallery-heading {
+  width: 100%;
+  margin-top: clamp(40px, 5vh, 64px);
+  text-align: center;
+color: #666263;
+font-size: 54px;
+  font-weight: 700;
+  text-shadow: 0.5px 0 0 currentColor, -0.3px 0 0 currentColor;
+}
+
+/* gap replaced with card margins for LG compatibility */
+.tv-gallery-row {
+  width: min(96%, 1380px);
+  margin: clamp(36px, 6vh, 72px) auto 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.tv-album-card {
+  width: 400px;
+  margin: 0 20px 40px;
+  border: 0;
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tv-album-card:focus {
+  outline: none;
+}
+
+.tv-album-card.is-focused,
+.tv-album-card:focus-visible {
+  transform: scale(1.05);
+  z-index: 5;
+}
+
+.tv-album-image-wrap {
+  width: 100%;
+  height: 250px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.tv-album-image {
+  width: 100%;
+  height: 250px;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+.tv-album-footer {
+  padding: 16px 16px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tv-album-title,
+.tv-album-footer .tv-album-title {
+  color: #2d2a2b;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-shadow: 0.5px 0 0 currentColor, -0.3px 0 0 currentColor;
+}
+
+.tv-album-count {
+  white-space: nowrap;
+  padding: 4px 10px;
+  border-radius: 999px;
+ background: #FEF0F3;
+color: #F96A86;
+
+  font-size: 12px;
+  font-weight: 300;
+}
+
+.tv-album-favorite {
+  color: #f96a86;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* 1366x768 */
+@media (max-width: 1366px), (max-height: 768px) {
+  .tv-gallery-scroll-area {
+    padding-top: calc(var(--safe-top) + 18px + 96px + 24px);
+    padding-left: calc(var(--safe-left) + 26px);
+    padding-right: calc(var(--safe-right) + 26px);
+  }
+
+  .tv-gallery-topbar {
+    top: calc(var(--safe-top) + 18px);
+    left: calc(var(--safe-left) + 26px);
+    right: calc(var(--safe-right) + 26px);
+    height: 96px;
+    padding: 0 28px;
+  }
+
+  .tv-gallery-brand-image {
+    height: 46px;
+  }
+
+  .tv-gallery-meta-item {
+    margin-right: 44px;
+  }
+
+  .tv-gallery-meta-item,
+  .tv-gallery-logout {
+    font-size: 16px;
+  }
+
+  .tv-couple-name {
+    font-size: 18px;
+  }
+
+  .tv-gallery-heading {
+    margin-top: 52px;
+    font-size: 40px;
+  }
+
+  .tv-gallery-row {
+    margin-top: 60px;
+    width: min(96%, 1060px);
+  }
+
+  .tv-album-card {
+    width: 300px;
+    margin: 0 20px 32px;
+  }
+
+  .tv-album-title,
+  .tv-album-footer .tv-album-title {
+    font-size: 18px;
+  }
+}
+
+/* 1280x720 */
+@media (max-width: 1280px), (max-height: 720px) {
+  .tv-gallery-scroll-area {
+    padding-top: calc(var(--safe-top) + 16px + 90px + 22px);
+    padding-left: calc(var(--safe-left) + 22px);
+    padding-right: calc(var(--safe-right) + 22px);
+  }
+
+  .tv-gallery-topbar {
+    top: calc(var(--safe-top) + 16px);
+    left: calc(var(--safe-left) + 22px);
+    right: calc(var(--safe-right) + 22px);
+    height: 90px;
+    padding: 0 24px;
+  }
+
+  .tv-gallery-brand-image {
+    height: 42px;
+  }
+
+  .tv-gallery-meta-item {
+    margin-right: 38px;
+  }
+
+  .tv-gallery-meta-item,
+  .tv-gallery-logout {
+    font-size: 15px;
+  }
+
+  .tv-gallery-meta .tv-gallery-meta-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .tv-gallery-meta-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .tv-couple-name {
+    font-size: 17px;
+  }
+
+  .tv-gallery-heading {
+    margin-top: 48px;
+    font-size: 36px;
+  }
+
+  .tv-gallery-row {
+    margin-top: 52px;
+    width: min(96%, 1000px);
+  }
+
+  .tv-album-card {
+    width: 280px;
+    margin: 0 18px 28px;
+  }
+
+  .tv-album-footer {
+    padding: 12px 12px 14px;
+  }
+
+  .tv-album-title,
+  .tv-album-footer .tv-album-title {
+    font-size: 17px;
+  }
+}
+
+/* very small TVs only */
+@media (max-width: 1024px), (max-height: 600px) {
+  .tv-gallery-scroll-area {
+    padding-top: calc(var(--safe-top) + 10px + 56px + 16px);
+    padding-left: calc(var(--safe-left) + 14px);
+    padding-right: calc(var(--safe-right) + 14px);
+  }
+
+  .tv-gallery-topbar {
+    top: calc(var(--safe-top) + 10px);
+    left: calc(var(--safe-left) + 14px);
+    right: calc(var(--safe-right) + 14px);
+    min-height: 56px;
+    padding: 0 14px;
+  }
+
+  .tv-gallery-brand-image {
+    height: 24px;
+  }
+
+  .tv-gallery-meta-item {
+    margin-right: 10px;
+  }
+
+  .tv-gallery-meta-item,
+  .tv-gallery-logout {
+    font-size: 11px;
+  }
+
+  .tv-gallery-meta .tv-gallery-meta-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .tv-gallery-meta-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .tv-couple-name {
+    font-size: 12px;
+  }
+
+  .tv-gallery-heading {
+    margin-top: 14px;
+    font-size: 22px;
+  }
+
+  .tv-gallery-row {
+    margin-top: 20px;
+  }
+
+  .tv-album-card {
+    width: 190px;
+    margin: 0 6px 20px;
+  }
+
+  .tv-album-title,
+  .tv-album-footer .tv-album-title {
+    font-size: 13px;
+  }
+
+  .tv-album-count {
+    font-size: 9px;
+    padding: 2px 5px;
+  }
+}
+
+/* 4K */
+@media (min-width: 2560px) and (min-height: 1400px) {
+  .tv-gallery-topbar {
+    height: 120px;
+    width: min(94%, 1720px);
+  }
+
+  .tv-gallery-brand-image {
+    height: 58px;
+  }
+
+  .tv-gallery-meta-item {
+    margin-right: 38px;
+  }
+
+  .tv-gallery-meta-item,
+  .tv-gallery-logout {
+    font-size: 20px;
+  }
+
+  .tv-couple-name {
+    font-size: 24px;
+  }
+
+  .tv-gallery-heading {
+    font-size: 58px;
+    margin-top: 56px;
+  }
+
+  .tv-gallery-row {
+    margin-top: 72px;
+    width: min(96%, 1620px);
+  }
+
+  .tv-album-card {
+    width: 440px;
+    margin: 0 32px 48px;
+  }
+
+  .tv-album-title,
+  .tv-album-footer .tv-album-title {
+    font-size: 22px;
+  }
+}

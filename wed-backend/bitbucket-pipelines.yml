@@ -1,0 +1,27 @@
+image: atlassian/default-image:4
+
+pipelines:
+  branches:
+    master:
+      - step:
+          name: Deploy to Server
+          script:
+            - pipe: atlassian/ssh-run:0.8.1
+              variables:
+                SSH_USER: $SERVER_USER
+                SERVER: $SERVER_IP
+                SSH_KEY: $SSH_KEY
+                COMMAND: |
+                  cd /var/www/vendoo
+
+                  php artisan down --retry=30 || true
+
+                  git pull origin master
+
+                  composer install --no-dev --optimize-autoloader
+
+                  php artisan migrate --force
+
+                  php artisan optimize
+
+                  php artisan up

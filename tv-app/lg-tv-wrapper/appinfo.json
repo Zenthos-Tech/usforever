@@ -1,0 +1,11 @@
+{
+  "id": "com.usforever.tv",
+  "version": "1.0.0",
+  "vendor": "UsForever",
+  "type": "web",
+  "main": "index.html",
+  "title": "UsForever TV",
+  "icon": "icon.png",
+  "requiredPermissions": [],
+  "largeIcon": "icon.png"
+}

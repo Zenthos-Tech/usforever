@@ -1,0 +1,40 @@
+{
+  "name": "tv-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "build:lg": "VITE_PLATFORM=webos vite build --config vite.config.lg.js",
+    "deploy:lg": "npm run build:lg && rm -rf /tmp/lg-clean && mkdir /tmp/lg-clean && cp lg-tv-wrapper/index.html lg-tv-wrapper/appinfo.json lg-tv-wrapper/icon.png lg-tv-wrapper/largeIcon.png lg-tv-wrapper/favicon.svg lg-tv-wrapper/background.jpeg /tmp/lg-clean/ && ares-package /tmp/lg-clean -o /tmp/lg-build && ares-install /tmp/lg-build/com.usforever.tv_1.0.0_all.ipk && ares-launch com.usforever.tv",
+    "build:samsung": "VITE_PLATFORM=tizen vite build --config vite.config.samsung.js",
+    "deploy:samsung": "npm run build:samsung && export PATH=\"$PATH:/home/nitin/tizen-studio/tools/ide/bin:/home/nitin/tizen-studio/tools\" && rm -rf /tmp/samsung-pkg && mkdir /tmp/samsung-pkg && cp samsung-tv-wrapper/index.html /home/nitin/workspace/SamsungTvApp/index.html && cp /home/nitin/workspace/SamsungTvApp/config.xml /home/nitin/workspace/SamsungTvApp/icon.png /home/nitin/workspace/SamsungTvApp/background.jpeg samsung-tv-wrapper/index.html /tmp/samsung-pkg/ && cd /tmp/samsung-pkg && tizen package -t wgt -s UsForeverTV -- . && mv \"/tmp/samsung-pkg/UsForever TV.wgt\" /tmp/samsung-pkg/app.wgt && tizen install -n /tmp/samsung-pkg/app.wgt -s emulator-26101 && tizen run -p A06iHSMjr0.SamsungTvApp -s emulator-26101",
+    "build:android": "VITE_PLATFORM=androidtv vite build --config vite.config.android.js",
+    "deploy:android": "npm run build:android && cd /tmp/apk_work && cp /home/nitin/Desktop/tv-app/android-tv-wrapper/index.html extracted/assets/index.html && cp /home/nitin/Desktop/tv-app/android-tv-wrapper/build.txt extracted/assets/build.txt && cd extracted && zip -q -r ../repacked.apk . -0 && cd .. && zipalign -f 4 repacked.apk aligned.apk && apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey --out signed.apk aligned.apk && adb -s emulator-5554 reboot && adb -s emulator-5554 wait-for-device && until adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | grep -q 1; do sleep 2; done && sleep 4 && adb -s emulator-5554 uninstall com.usforevertv; adb -s emulator-5554 install -t signed.apk && adb -s emulator-5554 shell pm clear com.usforevertv && adb -s emulator-5554 shell monkey -p com.usforevertv -c android.intent.category.LAUNCHER 1 && rm -rf ~/.android/avd/Television_1080p_API_34.avd/snapshots/default_boot",
+    "launch:android": "adb -s emulator-5554 shell pm clear com.usforevertv && adb -s emulator-5554 shell monkey -p com.usforevertv -c android.intent.category.LAUNCHER 1",
+    "stop:android": "adb -s emulator-5554 shell am force-stop com.usforevertv"
+  },
+  "dependencies": {
+    "framer-motion": "^12.38.0",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^6.30.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-legacy": "^8.0.1",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.4.0",
+    "vite": "^8.0.1",
+    "vite-plugin-singlefile": "^2.3.2"
+  }
+}
