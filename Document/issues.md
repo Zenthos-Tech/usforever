@@ -7,7 +7,7 @@ Severity guide: **High** = exploitable / data loss / app crash, **Med** = real b
 ### Bugs (logic / runtime)
 
 - [ ] **[Severity: High]** `wed-app/app/create-album.js:203` — `isGuestMode` references `needsPassword` 12 lines before its `const` declaration on line 215. This is a temporal-dead-zone ReferenceError that throws as soon as the component renders the guest-deep-link path. Move the `const needsPassword = …` above line 203.
-- [ ] **[Severity: High]** `wed-app/app/face-recognition.js:139,155` — uses `weddingId` from `useWedding()`, so guests who arrived via a deep link (and never went through OTP login) will hit "Wedding ID not found" or, worse, search faces in the **couple's local context wedding** rather than the shared wedding. Source weddingId from the share-access state instead.
+- [x] **[Severity: High]** `wed-app/app/face-recognition.js:139,155` — uses `weddingId` from `useWedding()`, so guests who arrived via a deep link (and never went through OTP login) will hit "Wedding ID not found" or, worse, search faces in the **couple's local context wedding** rather than the shared wedding. Source weddingId from the share-access state instead.
 - [ ] **[Severity: High]** `wed-app/utils/api.ts:1` — production base URL is a hardcoded ngrok dev tunnel (`deserted-cheryll-forwardly.ngrok-free.dev`). Any release build ships pointing at someone's laptop.
 - [ ] **[Severity: High]** `wed-app/app/share/[slug].js:23-26` — `console.log` prints the full share token + slug. In release builds these survive to logcat / device logs, leaking access credentials.
 - [ ] **[Severity: Med]** `wed-app/context/WeddingContext.js:17` — reads `process.env.EXPO_PUBLIC_API_BASE_URL`, while every other module reads `utils/api.API_URL`. With the env var unset, `fetchWeddingFromBackend`/`saveWeddingToBackend` short-circuit (`reason:'missing_api_base'`) so wedding profile sync never runs. Pick one source of truth.
@@ -76,10 +76,10 @@ Severity guide: **High** = exploitable / data loss / app crash, **Med** = real b
 - [ ] **[Severity: Med]** `wed-backend/src/routes/album.ts:24-42`, `routes/shareLink.ts:160-180`, `services/tvMediaService.ts:13-30` — N+1: per album, two extra round-trips (`Photo.findOne` for cover, `Photo.countDocuments`). Aggregate with `$lookup`/`$group` instead.
 - [ ] **[Severity: Med]** `wed-backend/src/config/s3.ts:6` — read URLs valid for 7 days. After permission revocation (e.g. share-link expired) any cached signed URL still works for up to a week. Shorten or stream through the API.
 - [ ] **[Severity: Low]** `wed-backend/src/config/rekognition.ts:13,18` — `Math.random()` for the random suffix on the collection name. Not crypto, but collisions only matter if two creates race for the same wedding before the DB write — low risk.
-- [ ] **[Severity: Low]** `wed-backend/src/routes/photo.ts:51-93` — `POST /api/photos` accepts the photo without an `albumId`, despite every consumer passing one. Tighten validation.
+- [x] **[Severity: Low]** `wed-backend/src/routes/photo.ts:51-93` — `POST /api/photos` accepts the photo without an `albumId`, despite every consumer passing one. Tighten validation.
 - [ ] **[Severity: Low]** `wed-backend/src/index.ts:35-58` — share-link sub-routes are mounted by hand-rewriting `req.url` instead of using `app.use(...)` with router-level paths. Works, but error-prone (e.g. `req.query` is rebuilt by `URLSearchParams(req.query as any).toString()` which loses array params).
-- [ ] **[Severity: Low]** `wed-backend/src/routes/tvPair.ts:97-99` — `import` declaration in the middle of the file. Move to the top.
-- [ ] **[Severity: Low]** `wed-backend/src/routes/photo.ts:101` — `TOTAL_STORAGE_BYTES = 300 * 1024 * 1024 * 1024` is hardcoded inline. Move to env / per-plan.
+- [x] **[Severity: Low]** `wed-backend/src/routes/tvPair.ts:97-99` — `import` declaration in the middle of the file. Move to the top.
+- [x] **[Severity: Low]** `wed-backend/src/routes/photo.ts:101` — `TOTAL_STORAGE_BYTES = 300 * 1024 * 1024 * 1024` is hardcoded inline. Move to env / per-plan.
 - [ ] **[Severity: Low]** `wed-backend/src/utils/helpers.ts:62-67` — `randAZ` uses `Math.random()`; fine for the 3-letter slug suffix but worth flagging given other random-source issues above.
 - [ ] **[Severity: Low]** `wed-backend/src/routes/user.ts:46-50` — auto-creates a `User` row on `send-otp`, populating `email = user_${phone}@otp.com`. Allows phone-number enumeration (different responses if a number already has a wedding) and clutters the User collection.
 
@@ -87,6 +87,6 @@ Severity guide: **High** = exploitable / data loss / app crash, **Med** = real b
 
 - [ ] **[Severity: Med]** Two AWS S3 SDKs are imported (`aws-sdk` v2 and `@aws-sdk/client-s3` v3 + presigner). Pick one — v2 is in maintenance mode through 2025 and bloats the bundle.
 - [ ] **[Severity: Low]** `wed-backend/src/routes/photo.ts`, `routes/album.ts`, etc. — handlers mix validation, DB access, S3 calls, and signing in one function. Extracting a thin service layer (like `services/tvPairService.ts`) would simplify testing.
-- [ ] **[Severity: Low]** `wed-backend/src/models/Cluster.ts`, `models/Recognition.ts` — declared but referenced nowhere. Delete or wire up.
+- [x] **[Severity: Low]** `wed-backend/src/models/Cluster.ts`, `models/Recognition.ts` — declared but referenced nowhere. Delete or wire up.
 - [ ] **[Severity: Low]** `wed-backend/src/routes/shareLink.ts` — single 600+ line file; the HTML render, slug helpers, and DB-helper closures could split out cleanly.
 - [ ] **[Severity: Low]** `wed-backend/src/utils/helpers.ts:10-22` — `toAlbumId`/`toUserId` cast ids to `Number`, but the schema uses `ObjectId`. Stale helpers from the Strapi-numeric-id era. Remove.

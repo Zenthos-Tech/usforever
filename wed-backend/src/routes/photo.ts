@@ -52,14 +52,12 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const { image_url, album, uploaded_by, userId, size_bytes, file_name, checksum, duplicate_group, media_type, mime_type } = req.body?.data || {};
     if (!image_url) return res.status(400).json({ error: 'image_url is required' });
+    if (!album) return res.status(400).json({ error: 'album is required' });
+    if (!isValidObjectId(album)) return res.status(400).json({ error: 'invalid album id' });
 
-    let albumId: string | null = null;
-    let albumData: any = null;
-    if (album) {
-      albumData = await Album.findById(album).select('weddingId title').lean();
-      if (!albumData) return res.status(400).json({ error: `Album ${album} does not exist` });
-      albumId = String(albumData._id);
-    }
+    const albumData = await Album.findById(album).select('weddingId title').lean();
+    if (!albumData) return res.status(400).json({ error: `Album ${album} does not exist` });
+    const albumId: string = String(albumData._id);
 
     const rawUserId = uploaded_by ?? userId;
     let uploadedById: string | null = null;
@@ -98,7 +96,7 @@ router.get('/storage-summary', async (req: Request, res: Response) => {
     const weddingId = String(req.query?.weddingId || '').trim();
     if (!weddingId) return res.status(400).json({ error: 'weddingId is required' });
 
-    const TOTAL_STORAGE_BYTES = 300 * 1024 * 1024 * 1024;
+    const TOTAL_STORAGE_BYTES = env.STORAGE_CAP_GIB * 1024 * 1024 * 1024;
     const albumIds = (await Album.find({ weddingId }).select('_id').lean()).map((a) => a._id);
 
     if (!albumIds.length) return res.json({ data: { totalBytes: TOTAL_STORAGE_BYTES, usedBytes: 0, remainingBytes: TOTAL_STORAGE_BYTES, imageBytes: 0, videoBytes: 0 } });

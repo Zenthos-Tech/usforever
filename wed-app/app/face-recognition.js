@@ -1,6 +1,6 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -27,9 +27,16 @@ const clamp = (v, min, max) => Math.max(min, Math.min(v, max));
 
 export default function FaceRecognitionScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
-  const { weddingId } = useWedding() || {};
+  const { weddingId: contextWeddingId } = useWedding() || {};
+
+  // Prefer the deep-link weddingId so guests who never logged in can still
+  // search the right wedding. Fall back to the locally-logged-in couple's
+  // weddingId for the in-app couple flow.
+  const paramWeddingId = String(params?.weddingId || '').trim();
+  const weddingId = paramWeddingId || contextWeddingId || '';
 
   const [imageAsset, setImageAsset] = useState(null);
   const [loading, setLoading] = useState(false);

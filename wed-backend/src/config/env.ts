@@ -48,6 +48,9 @@ export const env = {
   EXPO_GO_BASE: envStr('EXPO_GO_BASE'),
   PUBLIC_APP_BASE_URL: envStr('PUBLIC_APP_BASE_URL'),
 
+  // Storage (per-couple plan cap, in GiB; default 300 GiB)
+  STORAGE_CAP_GIB: envInt('STORAGE_CAP_GIB', 300),
+
   // TV
   TV_PAIR_TTL_MINUTES: envInt('TV_PAIR_TTL_MINUTES', 5),
   TV_TOKEN_TTL: envStr('TV_TOKEN_TTL', '12h'),

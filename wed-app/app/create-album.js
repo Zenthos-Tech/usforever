@@ -1103,7 +1103,14 @@ useEffect(() => {
             }}
           >
             <TouchableOpacity
-              onPress={() => router.push('/face-consent')}
+              onPress={() =>
+                router.push({
+                  pathname: '/face-consent',
+                  // Pass through the deep-link wedding id so guests who never
+                  // logged in still hit the right Rekognition collection.
+                  params: weddingId ? { weddingId: String(weddingId) } : {},
+                })
+              }
               activeOpacity={0.85}
               style={{
                 width: facialCard,
