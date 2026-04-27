@@ -109,12 +109,20 @@ function getApiBase() {
   return `${base}/api`;
 }
 
-async function apiFetch(path, options) {
+const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
+
+async function apiFetch(path, options = {}) {
   const baseApi = getApiBase();
   const p = String(path || '').startsWith('/') ? String(path) : `/${String(path)}`;
   const url = `${baseApi}${p}`;
 
-  const res = await fetch(url, options);
+  const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+  const headers = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(options.headers || {}),
+  };
+
+  const res = await fetch(url, { ...options, headers });
   const raw = await res.text();
 
   let json = null;

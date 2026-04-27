@@ -247,10 +247,14 @@ const pickImage = async () => {
     const fileName = asset.fileName || uri.split('/').pop() || 'profile.jpg';
     const mimeType = asset.mimeType || 'image/jpeg';
 
-    // Step 1: Get presigned URL
+    // Step 1: Get presigned URL (auth required)
+    const authToken = await AsyncStorage.getItem('USFOREVER_AUTH_TOKEN_V1');
     const presignRes = await fetch(`${API_URL}/photos/profile-photo/presign`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
       body: JSON.stringify({
         weddingId: wid,
         originalFileName: fileName,
@@ -323,7 +327,11 @@ const pickImage = async () => {
         const wid = String(weddingData?.weddingId || '').trim();
         const s3Key = await uploadProfilePhotoToS3(pendingPhotoRef.current);
         if (s3Key && wid && API_URL) {
-          const readRes = await fetch(`${API_URL}/photos/profile-photo?weddingId=${wid}`);
+          const readToken = await AsyncStorage.getItem('USFOREVER_AUTH_TOKEN_V1');
+          const readRes = await fetch(
+            `${API_URL}/photos/profile-photo?weddingId=${wid}`,
+            readToken ? { headers: { Authorization: `Bearer ${readToken}` } } : undefined
+          );
           const readData = await readRes.json();
           const signedUrl = readData?.data?.url || '';
           if (signedUrl) {
