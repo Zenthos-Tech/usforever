@@ -123,8 +123,6 @@ export const ImagesProvider = ({ children }) => {
   // pagination state per album: { [albumId]: { cursor, hasMore, loading } }
   const [paginationByAlbum, setPaginationByAlbum] = useState({});
 
-  console.log(paginationByAlbum,'PAGINATION');
-
   const images = useMemo(() => {
     const id = String(activeAlbumId || '');
     if (!id) return [];
