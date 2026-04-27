@@ -96,22 +96,44 @@ function verifyPhotoJwt(token: string): any {
 
 // ─── Passcode rate limiter (in-memory) ───────────────────────────────────────
 // Limits brute-force attempts against passcode-protected links.
-// Resets per slug after PASSCODE_WINDOW_MS.
+// Two parallel counters:
+//   • per-slug   (PASSCODE_LIMIT = 10 / PASSCODE_WINDOW_MS = 2 min) — narrow,
+//     so a leaked URL can be tried at most 10 times per window.
+//   • per-IP     (PASSCODE_IP_LIMIT = 30 / PASSCODE_WINDOW_MS) — broader cap
+//     so an attacker can't roll through different slugs / tokens to amplify.
+//   Resets per (key, window) pair.
 
 const passcodeAttempts = new Map<string, { count: number; resetAt: number }>();
 const PASSCODE_LIMIT = 10;
+const PASSCODE_IP_LIMIT = 30;
 const PASSCODE_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
 
-function checkPasscodeRateLimit(slug: string): boolean {
+function bumpAttempts(key: string, max: number): boolean {
   const now = Date.now();
-  const entry = passcodeAttempts.get(slug);
+  const entry = passcodeAttempts.get(key);
   if (!entry || entry.resetAt < now) {
-    passcodeAttempts.set(slug, { count: 1, resetAt: now + PASSCODE_WINDOW_MS });
+    passcodeAttempts.set(key, { count: 1, resetAt: now + PASSCODE_WINDOW_MS });
     return true;
   }
-  if (entry.count >= PASSCODE_LIMIT) return false;
+  if (entry.count >= max) return false;
   entry.count++;
   return true;
+}
+
+function clientIp(req: Request): string {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0]?.trim();
+  return fwd || req.ip || 'unknown';
+}
+
+function checkPasscodeRateLimit(slug: string, req: Request): boolean {
+  const slugKey = `slug:${slug || '_'}`;
+  const ipKey = `ip:${clientIp(req)}`;
+  // Both counters get bumped regardless of slug validity. A request for an
+  // unknown slug still consumes from the IP budget, so brute-forcing slugs
+  // burns the same per-IP budget as brute-forcing passcodes.
+  const slugOk = bumpAttempts(slugKey, PASSCODE_LIMIT);
+  const ipOk = bumpAttempts(ipKey, PASSCODE_IP_LIMIT);
+  return slugOk && ipOk;
 }
 
 // ─── DB helpers ───────────────────────────────────────────────────────────────
@@ -348,15 +370,19 @@ router.post('/resolve/:slug', async (req: Request, res: Response) => {
     const rawToken = String((req.query?.t as string) || req.body?.token || '').trim();
     if (!rawToken) return res.status(401).json({ error: 'Token required' });
 
+    // Bump rate-limit counters before the slug lookup so probing for valid
+    // (slug, token) pairs consumes the same per-IP budget as guessing
+    // passcodes. Returns 429 once either the per-slug or per-IP cap is hit.
+    if (!checkPasscodeRateLimit(slug, req)) {
+      return res.status(429).json({ error: 'Too many attempts, try again later' });
+    }
+
     const tokenHash = hashToken(rawToken);
     const link = await ShareLink.findOne({ slug, tokenHash }).populate('albumId', 'title').lean();
     if (!link) return res.status(404).json({ error: 'Invalid link' });
     if (isExpired(link.expiresAt)) return res.status(403).json({ error: 'Link expired' });
 
     if (link.requiresPasscode) {
-      if (!checkPasscodeRateLimit(slug)) {
-        return res.status(429).json({ error: 'Too many passcode attempts, try again later' });
-      }
       const p = String(req.body?.passcode ?? '').trim();
       if (!p) {
         // Return non-sensitive wedding preview so the app can render
@@ -452,6 +478,11 @@ router.get('/photos', async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'Provide Bearer token or slug+t' });
       }
 
+      // Same per-IP + per-slug throttle as /resolve — see checkPasscodeRateLimit.
+      if (!checkPasscodeRateLimit(slug, req)) {
+        return res.status(429).json({ error: 'Too many attempts, try again later' });
+      }
+
       const tokenHash = hashToken(rawToken);
       const link = await ShareLink.findOne({ slug, tokenHash }).lean();
       if (!link) return res.status(404).json({ error: 'Invalid link' });
@@ -460,9 +491,6 @@ router.get('/photos', async (req: Request, res: Response) => {
 
       // Passcode check applies to all paths, not just /resolve
       if (link.requiresPasscode) {
-        if (!checkPasscodeRateLimit(slug)) {
-          return res.status(429).json({ error: 'Too many attempts, try again later' });
-        }
         const p = String((req.query?.passcode as string) || '').trim();
         if (!p) return res.status(401).json({ error: 'Passcode required' });
         if (!(await bcrypt.compare(p, String(link.passcodeHash || '')))) {

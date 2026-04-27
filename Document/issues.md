@@ -31,7 +31,7 @@ Severity guide: **High** = exploitable / data loss / app crash, **Med** = real b
 - [ ] **[Severity: Med]** `wed-app/app/create-album.js`, `DynamicGallery.js`, `DynamicImagePreview.js`, `face-result.js` — all > 1300 lines, with networking, animation, sizing tokens, and styling inlined. Extracting hooks/components would make these reviewable.
 - [ ] **[Severity: Med]** `wed-app/app/share-link.js:209,253-254` and many other places — full URL + token printed via `console.log`/`console.warn`. Strip in production builds.
 - [ ] **[Severity: Low]** `wed-app/app/setup-wedding.js`, multiple files — `process.env.EXPO_PUBLIC_API_*` env vars referenced inconsistently across the codebase. Consolidate to one helper.
-- [ ] **[Severity: Low]** `wed-app/app/share-link.js:65-74` — date math (`'3days'`, `'nolimit'`) duplicated in `share-access.js` (`getDurationLabel`). Keep in one util.
+- [x] **[Severity: Low]** `wed-app/app/share-link.js:65-74` — date math (`'3days'`, `'nolimit'`) duplicated in `share-access.js` (`getDurationLabel`). Keep in one util.
 
 ## Backend
 
@@ -66,7 +66,7 @@ Severity guide: **High** = exploitable / data loss / app crash, **Med** = real b
 - [ ] **[Severity: Med]** `wed-backend/src/routes/user.ts:54` — `console.log(\`OTP for ${contactNumber}: ${otp}\`)` writes every OTP to stdout. Anyone with log access can authenticate as anyone.
 - [ ] **[Severity: Med]** `wed-backend/src/routes/user.ts:57` — leftover `console.log("Helloo")`.
 - [ ] **[Severity: Med]** `wed-backend/src/routes/shareLink.ts:101-115` — passcode rate limiter is in-process (`Map`). Multi-instance deploys disable brute-force protection effectively.
-- [ ] **[Severity: Med]** `wed-backend/src/routes/shareLink.ts:355-380` — passcode rate-limit increment runs only after a successful `(slug, tokenHash)` match. Attackers can't spam wrong passcodes for a *random* slug, but a leaked URL can be brute-forced 10 attempts / 2 min indefinitely (no global cap). Consider per-IP throttling and incrementing on missing-slug too.
+- [x] **[Severity: Med]** `wed-backend/src/routes/shareLink.ts:355-380` — passcode rate-limit increment runs only after a successful `(slug, tokenHash)` match. Attackers can't spam wrong passcodes for a *random* slug, but a leaked URL can be brute-forced 10 attempts / 2 min indefinitely (no global cap). Consider per-IP throttling and incrementing on missing-slug too.
 - [ ] **[Severity: Med]** `wed-backend/src/routes/shareLink.ts:497-511` — `Photo.find().skip(skip).limit(limit)` for the public guest path. With even moderately sized albums, deep pagination is O(skip). Mirror the cursor pagination already used for `GET /api/photos`.
 - [ ] **[Severity: Med]** `wed-backend/src/index.ts:32` — `multer({ dest: '/tmp/uploads/' })` has no `limits.fileSize`, no `fileFilter`, and the uploaded file is never deleted (`face.ts:18` reads it via `fs.readFileSync` and walks away). Disk fills up; arbitrary content types are accepted.
 - [ ] **[Severity: Med]** `wed-backend/src/routes/face.ts:18` — synchronous `fs.readFileSync` on the request thread, plus the temp file leaks (no `unlink`).
@@ -75,13 +75,13 @@ Severity guide: **High** = exploitable / data loss / app crash, **Med** = real b
 - [ ] **[Severity: Med]** `wed-backend/src/routes/photo.ts:284,302-303` — `Photo.countDocuments(filter)` runs on every paginated request and `Promise.all` signs every URL. On a 10k-photo album every page hits the heavier query. Either drop the count, cache it, or compute it lazily.
 - [ ] **[Severity: Med]** `wed-backend/src/routes/album.ts:24-42`, `routes/shareLink.ts:160-180`, `services/tvMediaService.ts:13-30` — N+1: per album, two extra round-trips (`Photo.findOne` for cover, `Photo.countDocuments`). Aggregate with `$lookup`/`$group` instead.
 - [ ] **[Severity: Med]** `wed-backend/src/config/s3.ts:6` — read URLs valid for 7 days. After permission revocation (e.g. share-link expired) any cached signed URL still works for up to a week. Shorten or stream through the API.
-- [ ] **[Severity: Low]** `wed-backend/src/config/rekognition.ts:13,18` — `Math.random()` for the random suffix on the collection name. Not crypto, but collisions only matter if two creates race for the same wedding before the DB write — low risk.
+- [x] **[Severity: Low]** `wed-backend/src/config/rekognition.ts:13,18` — `Math.random()` for the random suffix on the collection name. Not crypto, but collisions only matter if two creates race for the same wedding before the DB write — low risk.
 - [ ] **[Severity: Low]** `wed-backend/src/routes/photo.ts:51-93` — `POST /api/photos` accepts the photo without an `albumId`, despite every consumer passing one. Tighten validation.
 - [ ] **[Severity: Low]** `wed-backend/src/index.ts:35-58` — share-link sub-routes are mounted by hand-rewriting `req.url` instead of using `app.use(...)` with router-level paths. Works, but error-prone (e.g. `req.query` is rebuilt by `URLSearchParams(req.query as any).toString()` which loses array params).
 - [ ] **[Severity: Low]** `wed-backend/src/routes/tvPair.ts:97-99` — `import` declaration in the middle of the file. Move to the top.
 - [ ] **[Severity: Low]** `wed-backend/src/routes/photo.ts:101` — `TOTAL_STORAGE_BYTES = 300 * 1024 * 1024 * 1024` is hardcoded inline. Move to env / per-plan.
-- [ ] **[Severity: Low]** `wed-backend/src/utils/helpers.ts:62-67` — `randAZ` uses `Math.random()`; fine for the 3-letter slug suffix but worth flagging given other random-source issues above.
-- [ ] **[Severity: Low]** `wed-backend/src/routes/user.ts:46-50` — auto-creates a `User` row on `send-otp`, populating `email = user_${phone}@otp.com`. Allows phone-number enumeration (different responses if a number already has a wedding) and clutters the User collection.
+- [x] **[Severity: Low]** `wed-backend/src/utils/helpers.ts:62-67` — `randAZ` uses `Math.random()`; fine for the 3-letter slug suffix but worth flagging given other random-source issues above.
+- [x] **[Severity: Low]** `wed-backend/src/routes/user.ts:46-50` — auto-creates a `User` row on `send-otp`, populating `email = user_${phone}@otp.com`. Allows phone-number enumeration (different responses if a number already has a wedding) and clutters the User collection.
 
 ### Code quality / design
 
