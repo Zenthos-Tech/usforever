@@ -1,4 +1,8 @@
-export const generateOtp = () => Math.floor(1000 + Math.random() * 9000).toString();
+import crypto from 'crypto';
+
+// Cryptographically-secure 4-digit OTP. crypto.randomInt is uniform over the
+// half-open range [min, max), which gives values 1000..9999 inclusive.
+export const generateOtp = () => crypto.randomInt(1000, 10000).toString();
 
 const MAX_ATTEMPTS = 3;
 const OTP_EXPIRY_MS = 10 * 60 * 1000;
