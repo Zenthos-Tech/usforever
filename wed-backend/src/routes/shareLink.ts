@@ -42,12 +42,18 @@ function isExpired(d: any): boolean {
 
 /**
  * Returns the public base URL for generating share links.
- * Prefers the configured PUBLIC_APP_BASE_URL env var over deriving from
- * request headers to prevent host-header injection attacks.
+ *
+ * Prefers the configured PUBLIC_APP_BASE_URL env var. In production we refuse
+ * to derive the URL from the request's Host header, which is attacker-
+ * controlled and would let a third party poison generated share links. In
+ * development we fall back to the request host for convenience.
  */
 function getPublicBase(req: Request): string {
   const configured = env.PUBLIC_APP_BASE_URL.replace(/\/+$/, '');
   if (configured) return configured;
+  if (process.env.NODE_ENV === 'production') {
+    throw Object.assign(new Error('PUBLIC_APP_BASE_URL is not configured'), { status: 500 });
+  }
   return `${req.protocol}://${req.get('host')}`;
 }
 

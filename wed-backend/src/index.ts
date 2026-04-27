@@ -34,8 +34,31 @@ const upload = multer({
   },
 });
 
+// CORS — production must set CORS_ALLOWED_ORIGINS to a comma-separated list
+// (e.g. https://app.usforever.com,https://usforever.com). Empty list keeps the
+// permissive `*` behaviour for local development only.
+const isProd = process.env.NODE_ENV === 'production';
+const allowedOrigins = env.CORS_ALLOWED_ORIGINS
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+if (isProd && allowedOrigins.length === 0) {
+  console.warn(
+    '[cors] CORS_ALLOWED_ORIGINS is empty in production — refusing all browser origins.'
+  );
+}
+
 app.use(cors({
-  origin: '*',
+  origin: (origin, cb) => {
+    // Non-browser clients (mobile app, server-to-server) send no Origin header.
+    if (!origin) return cb(null, true);
+    if (allowedOrigins.length === 0) {
+      // Dev-only fallback. In prod the warning above fires and we deny below.
+      return cb(null, !isProd);
+    }
+    return cb(null, allowedOrigins.includes(origin));
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'ngrok-skip-browser-warning'],
 }));

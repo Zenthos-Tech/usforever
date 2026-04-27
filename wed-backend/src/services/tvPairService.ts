@@ -6,6 +6,11 @@ import { TvPairSession } from '../models/TvPairSession';
 function addMinutes(date: Date, minutes: number) { return new Date(date.getTime() + minutes * 60 * 1000); }
 function isExpired(d?: Date | null) { return !d || new Date(d).getTime() <= Date.now(); }
 
+// TV app heartbeats every ~20s; allow ~4 missed beats before declaring the
+// session dead. Anything below the heartbeat cadence will flap PAIRED
+// sessions to DISCONNECTED almost immediately.
+const TV_DISCONNECT_THRESHOLD_SEC = 90;
+
 export async function startPairing({ shareType = 'family' }: { shareType?: string } = {}) {
   const ttlMin = Math.max(1, Math.min(30, env.TV_PAIR_TTL_MINUTES));
   const pairingId = crypto.randomUUID();
@@ -28,10 +33,11 @@ export async function getStatus({ pairingId }: { pairingId: string }) {
     return { pairingId, status: 'EXPIRED' as const, expiresAt: row.expiresAt };
   }
 
-  // If PAIRED but TV hasn't sent a heartbeat in 90s, report as DISCONNECTED
+  // If PAIRED but TV hasn't sent a heartbeat in TV_DISCONNECT_THRESHOLD_SEC,
+  // report as DISCONNECTED.
   if (row.status === 'PAIRED' && row.tvLastSeenAt) {
     const staleSec = (Date.now() - new Date(row.tvLastSeenAt).getTime()) / 1000;
-    if (staleSec > 8) {
+    if (staleSec > TV_DISCONNECT_THRESHOLD_SEC) {
       return { pairingId: row.pairingId, status: 'DISCONNECTED' as any, expiresAt: row.expiresAt, weddingId: row.weddingId, tvToken: row.tvToken };
     }
   }
@@ -79,10 +85,10 @@ export async function getActiveByWeddingId({ weddingId }: { weddingId: string })
   const row = await TvPairSession.findOne({ weddingId, status: 'PAIRED' }).lean();
   if (!row) return null;
 
-  // If TV hasn't sent a heartbeat in 90s, treat as disconnected
+  // If TV hasn't sent a heartbeat in TV_DISCONNECT_THRESHOLD_SEC, treat as disconnected
   if (row.tvLastSeenAt) {
     const staleSec = (Date.now() - new Date(row.tvLastSeenAt).getTime()) / 1000;
-    if (staleSec > 8) return { pairingId: row.pairingId, status: 'DISCONNECTED' as any, weddingId: row.weddingId };
+    if (staleSec > TV_DISCONNECT_THRESHOLD_SEC) return { pairingId: row.pairingId, status: 'DISCONNECTED' as any, weddingId: row.weddingId };
   }
 
   return { pairingId: row.pairingId, status: row.status, expiresAt: row.expiresAt, weddingId: row.weddingId };
