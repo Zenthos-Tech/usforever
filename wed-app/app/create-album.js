@@ -199,6 +199,8 @@ const weddingId = useMemo(() => {
 const isDeepLink = !!deepSlug && !!deepToken;
 const deepLinkRole = String(deepRole || '').trim().toLowerCase();
 
+const needsPassword = params?.needsPassword === 'true';
+
 // needsPassword means it's a locked share link — always guest/photographer, never couple
 const isGuestMode = isDeepLink && (needsPassword || deepLinkRole === 'guest' || deepLinkRole === 'photographer');
 const isCoupleDeepLink = isDeepLink && deepLinkRole === 'couple';
@@ -211,8 +213,6 @@ const isCouple = isNativeCoupleSession;
 
 // keep role value safe
 const role = deepLinkRole || (isGuestMode ? 'guest' : 'couple');
-
-const needsPassword = params?.needsPassword === 'true';
 
   const footerRef = useRef(null);
 

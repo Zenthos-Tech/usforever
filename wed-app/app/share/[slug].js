@@ -20,10 +20,6 @@ const DEV_BUILD_URL = `https://expo.dev/projects/cf85359a-0afa-4351-818c-26fa182
 export default function ShareGate() {
   const router = useRouter();
   const { slug, t } = useLocalSearchParams();
-  console.log('🔥 ShareGate mounted');
-console.log('slug =', slug);
-console.log('t =', t);
-console.log('API_URL =', API_URL);
 
   const shareSlug = String(slug || '').trim();
   const token = String(t || '').trim();
@@ -90,9 +86,6 @@ console.log('API_URL =', API_URL);
 
       try {
         const finalUrl = `${resolveUrl}?t=${encodeURIComponent(token)}`;
-        console.log('ShareGate slug:', shareSlug);
-        console.log('ShareGate token:', token);
-        console.log('ShareGate finalUrl:', finalUrl);
 
         const res = await fetch(finalUrl, {
           method: 'POST',
@@ -101,8 +94,6 @@ console.log('API_URL =', API_URL);
         });
 
         const raw = await res.text();
-        console.log('ShareGate status:', res.status);
-        console.log('ShareGate raw response:', raw);
 
         let data = {};
         try {
@@ -156,8 +147,6 @@ console.log('API_URL =', API_URL);
           return;
         }
 
-        console.log('ShareGate parsed data:', data);
-
     router.replace({
   pathname: '/create-album',
   params: {
@@ -179,8 +168,7 @@ console.log('API_URL =', API_URL);
     accessToken: String(data.accessToken || ''),
   },
 });
-      } catch (e) {
-        console.log('ShareGate fetch error:', e);
+      } catch {
         if (!cancelled) setErr('Network error.');
       }
     }
