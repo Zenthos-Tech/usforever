@@ -72,15 +72,10 @@ function normalizeName(v) {
   return String(v || '').replace(/\s+/g, ' ').trim();
 }
 
-const API_BASE = String(
-  API_URL ||
-    process.env.EXPO_PUBLIC_API_BASE_URL ||
-    process.env.EXPO_PUBLIC_API_URL ||
-    process.env.EXPO_PUBLIC_API_BASE ||
-    ''
-)
-  .trim()
-  .replace(/\/+$/, '');
+// API_URL already resolves env vars in utils/api.ts. Stripping the duplicated
+// process.env fallbacks here so we only have one source of truth and so a
+// missing config doesn't silently hide behind whichever shadow var was set.
+const API_BASE = String(API_URL || '').trim().replace(/\/+$/, '');
 
 const ALBUMS_PATH = '/albums';
 

@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -20,8 +21,11 @@ import PrimaryButton from '@/components/PrimaryButton';
 import CameraIcon from '../assets/images/camera.svg';
 import CloseIcon from '../assets/images/close.svg';
 import UploadIcon from '../assets/images/upload2.svg';
+import { useImages } from '../context/ImagesContext';
 import { useWedding } from '../context/WeddingContext';
 import Colors from '../theme/colors';
+
+const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
 
 const clamp = (v, min, max) => Math.max(min, Math.min(v, max));
 
@@ -30,6 +34,11 @@ export default function FaceRecognitionScreen() {
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
   const { weddingId } = useWedding() || {};
+  // Guests pick up the share-access accessToken from ImagesContext after the
+  // /resolve handshake. Couples use the user JWT from AsyncStorage. We try
+  // the guest token first so a logged-in couple following someone else's
+  // share link still uses the correct token for the shared wedding.
+  const { shareAccess } = useImages() || {};
 
   const [imageAsset, setImageAsset] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -159,10 +168,17 @@ export default function FaceRecognitionScreen() {
         type: mimeType,
       });
 
+      const guestAccessToken = String(shareAccess?.accessToken || '').trim();
+      const userJwt = guestAccessToken
+        ? ''
+        : String((await AsyncStorage.getItem(AUTH_TOKEN_KEY)) || '').trim();
+      const bearer = guestAccessToken || userJwt;
+
       const response = await fetch(`${API_URL}/face/search`, {
         method: 'POST',
         headers: {
           Accept: 'application/json',
+          ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
         },
         body: formData,
       });
