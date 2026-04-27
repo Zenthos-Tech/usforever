@@ -9,7 +9,12 @@ import userRoutes from './routes/user';
 import photoRoutes from './routes/photo';
 import faceRoutes from './routes/face';
 import albumRoutes from './routes/album';
-import shareLinkRoutes from './routes/shareLink';
+import {
+  shareLinkRouter,
+  shareGateRouter,
+  shareRedirectRouter,
+  sharePhotosRouter,
+} from './routes/shareLink';
 import tvPairRoutes from './routes/tvPair';
 import tvMediaRoutes from './routes/tvMedia';
 import weddingRoutes from './routes/wedding';
@@ -32,30 +37,13 @@ app.use('/api/photos', photoRoutes);
 app.use('/api/face', upload.single('image'), faceRoutes);
 app.use('/api/albums', albumRoutes);
 
-app.post('/api/share-links/generate', (req, res, next) => {
-  req.url = '/generate';
-  shareLinkRoutes(req, res, next);
-});
-app.post('/api/share-links/resolve/:slug', (req, res, next) => {
-  req.url = `/resolve/${encodeURIComponent(req.params.slug)}`;
-  shareLinkRoutes(req, res, next);
-});
-app.get('/api/s/:slug', (req, res, next) => {
-  req.url = `/${req.params.slug}?${new URLSearchParams(req.query as any).toString()}`;
-  shareLinkRoutes(req, res, next);
-});
-app.get('/api/share/photos', (req, res, next) => {
-  req.url = `/photos?${new URLSearchParams(req.query as any).toString()}`;
-  shareLinkRoutes(req, res, next);
-});
-app.get('/api/r', (req, res, next) => {
-  req.url = `/redirect?${new URLSearchParams(req.query as any).toString()}`;
-  shareLinkRoutes(req, res, next);
-});
-app.get('/api/share-links', (req, res, next) => {
-  req.url = `/?${new URLSearchParams(req.query as any).toString()}`;
-  shareLinkRoutes(req, res, next);
-});
+// Share-link sub-routers, each at its proper public prefix. The previous
+// implementation rewrote `req.url` and lost array query params via
+// URLSearchParams.toString(); using app.use() keeps Express's parsing intact.
+app.use('/api/share-links', shareLinkRouter);
+app.use('/api/s', shareGateRouter);
+app.use('/api/r', shareRedirectRouter);
+app.use('/api/share', sharePhotosRouter);
 
 app.use('/api/tv/pair', tvPairRoutes);
 app.use('/api/tv', tvMediaRoutes);

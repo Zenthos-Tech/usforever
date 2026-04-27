@@ -84,13 +84,20 @@ const API_BASE = String(
 
 const ALBUMS_PATH = '/albums';
 
+const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
+
 async function apiFetch(path, options = {}) {
   if (!API_BASE) throw new Error('Missing API base URL');
 
   const url = `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+  // Album endpoints now require auth (see backend batch 12). Pull the JWT
+  // from AsyncStorage and forward it on every call so the couple's session
+  // can read/mutate their own albums.
+  const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
   const headers = {
     Accept: 'application/json',
     'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {}),
   };
 

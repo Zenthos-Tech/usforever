@@ -44,7 +44,7 @@ Severity guide: **High** = exploitable / data loss / app crash, **Med** = real b
   - `GET /` (l. 270), `GET /:id` (l. 331) — anyone with an `albumId` reads every photo signed URL.
   - `DELETE /:id` (l. 342) — userId is taken from query/body and only enforced when both sides are non-empty (`rawUserId && photo.uploadedById && …`); omit `userId` and the check is skipped, deleting any photo + its S3 object.
   - `POST /sync-sizes` (l. 122), `GET /storage-summary` (l. 96), `POST /check-duplicate` (l. 154), `POST /profile-photo/presign` (l. 232), `GET /profile-photo` (l. 255) — all unauthenticated.
-- [ ] **[Severity: High]** `wed-backend/src/routes/album.ts` — none of `GET /`, `POST /`, `POST /ensure-defaults`, `PUT /:id/rename`, `DELETE /:id` require auth or check that the caller owns the wedding. `DELETE /:id` also `Photo.deleteMany` for non-default albums **without removing the underlying S3 objects**, so storage leaks every "delete album" action.
+- [x] **[Severity: High]** `wed-backend/src/routes/album.ts` — none of `GET /`, `POST /`, `POST /ensure-defaults`, `PUT /:id/rename`, `DELETE /:id` require auth or check that the caller owns the wedding. `DELETE /:id` also `Photo.deleteMany` for non-default albums **without removing the underlying S3 objects**, so storage leaks every "delete album" action.
 - [ ] **[Severity: High]** `wed-backend/src/routes/wedding.ts:42-49` — `GET /api/weddings` lists every wedding row in the DB with no auth. PII (bride/groom names, phones, dates) leaks in bulk.
 - [ ] **[Severity: High]** `wed-backend/src/routes/wedding.ts` — every other handler (`GET /context`, `PATCH /context`, `GET /:id`, `PUT /:id`, `DELETE /:id`) is also unauthenticated and unscoped. `DELETE /api/weddings/:id` will erase any couple's wedding given the id.
 - [ ] **[Severity: High]** `wed-backend/src/routes/face.ts:10-51` — `POST /api/face/search` accepts `weddingId` in the multipart body with no auth, so anyone with a wedding id can run a selfie against that couple's Rekognition collection.
@@ -77,7 +77,7 @@ Severity guide: **High** = exploitable / data loss / app crash, **Med** = real b
 - [ ] **[Severity: Med]** `wed-backend/src/config/s3.ts:6` — read URLs valid for 7 days. After permission revocation (e.g. share-link expired) any cached signed URL still works for up to a week. Shorten or stream through the API.
 - [ ] **[Severity: Low]** `wed-backend/src/config/rekognition.ts:13,18` — `Math.random()` for the random suffix on the collection name. Not crypto, but collisions only matter if two creates race for the same wedding before the DB write — low risk.
 - [ ] **[Severity: Low]** `wed-backend/src/routes/photo.ts:51-93` — `POST /api/photos` accepts the photo without an `albumId`, despite every consumer passing one. Tighten validation.
-- [ ] **[Severity: Low]** `wed-backend/src/index.ts:35-58` — share-link sub-routes are mounted by hand-rewriting `req.url` instead of using `app.use(...)` with router-level paths. Works, but error-prone (e.g. `req.query` is rebuilt by `URLSearchParams(req.query as any).toString()` which loses array params).
+- [x] **[Severity: Low]** `wed-backend/src/index.ts:35-58` — share-link sub-routes are mounted by hand-rewriting `req.url` instead of using `app.use(...)` with router-level paths. Works, but error-prone (e.g. `req.query` is rebuilt by `URLSearchParams(req.query as any).toString()` which loses array params).
 - [ ] **[Severity: Low]** `wed-backend/src/routes/tvPair.ts:97-99` — `import` declaration in the middle of the file. Move to the top.
 - [ ] **[Severity: Low]** `wed-backend/src/routes/photo.ts:101` — `TOTAL_STORAGE_BYTES = 300 * 1024 * 1024 * 1024` is hardcoded inline. Move to env / per-plan.
 - [ ] **[Severity: Low]** `wed-backend/src/utils/helpers.ts:62-67` — `randAZ` uses `Math.random()`; fine for the 3-letter slug suffix but worth flagging given other random-source issues above.
@@ -86,7 +86,7 @@ Severity guide: **High** = exploitable / data loss / app crash, **Med** = real b
 ### Code quality / design
 
 - [ ] **[Severity: Med]** Two AWS S3 SDKs are imported (`aws-sdk` v2 and `@aws-sdk/client-s3` v3 + presigner). Pick one — v2 is in maintenance mode through 2025 and bloats the bundle.
-- [ ] **[Severity: Low]** `wed-backend/src/routes/photo.ts`, `routes/album.ts`, etc. — handlers mix validation, DB access, S3 calls, and signing in one function. Extracting a thin service layer (like `services/tvPairService.ts`) would simplify testing.
+- [x] **[Severity: Low]** `wed-backend/src/routes/photo.ts`, `routes/album.ts`, etc. — handlers mix validation, DB access, S3 calls, and signing in one function. Extracting a thin service layer (like `services/tvPairService.ts`) would simplify testing.
 - [ ] **[Severity: Low]** `wed-backend/src/models/Cluster.ts`, `models/Recognition.ts` — declared but referenced nowhere. Delete or wire up.
-- [ ] **[Severity: Low]** `wed-backend/src/routes/shareLink.ts` — single 600+ line file; the HTML render, slug helpers, and DB-helper closures could split out cleanly.
+- [x] **[Severity: Low]** `wed-backend/src/routes/shareLink.ts` — single 600+ line file; the HTML render, slug helpers, and DB-helper closures could split out cleanly.
 - [ ] **[Severity: Low]** `wed-backend/src/utils/helpers.ts:10-22` — `toAlbumId`/`toUserId` cast ids to `Number`, but the schema uses `ObjectId`. Stale helpers from the Strapi-numeric-id era. Remove.

@@ -8,10 +8,16 @@ import { ShareLink } from '../models/ShareLink';
 import { Album } from '../models/Album';
 import { Wedding } from '../models/Wedding';
 import { Photo } from '../models/Photo';
-import { escapeHtml } from '../utils/helpers';
 import { authRequired } from '../middleware/auth';
+import { renderPage } from './shareLinkPage';
 
-const router = Router();
+// Four sub-routers, one per public URL prefix. index.ts mounts each at its
+// proper Express base path so we don't need the old `req.url` rewriting (which
+// dropped repeated query params via URLSearchParams.toString()).
+const router = Router();              // /api/share-links/{generate,resolve/:slug,/}
+const shareGateRouter = Router();     // /api/s/:slug
+const shareRedirectRouter = Router(); // /api/r
+const sharePhotosRouter = Router();   // /api/share/photos
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 // ─── Token helpers ────────────────────────────────────────────────────────────
@@ -179,54 +185,7 @@ async function getVisibleAlbums(wid: string) {
   }
 }
 
-// ─── HTML redirect page ───────────────────────────────────────────────────────
-
-function buildAndroidIntentUrl(appUrl: string): string {
-  if (!appUrl.startsWith('usforever://')) return '';
-  const path = appUrl.slice('usforever://'.length);
-  // package= targets the exact app, skipping any chooser dialog
-  // S.browser_fallback_url keeps Chrome happy if the app is not installed
-  const fallback = encodeURIComponent(appUrl);
-  return `intent://${path}#Intent;scheme=usforever;package=com.anonymous.WeddingApp;S.browser_fallback_url=${fallback};end`;
-}
-
-function renderPage(args: {
-  title?: string;
-  appUrl: string;
-  expoUrl?: string;
-  androidIntentUrl?: string;
-  error?: string;
-}): string {
-  const st = escapeHtml(args.title || 'Open in UsForever');
-  const se = args.error
-    ? `<div style="color:#c00;font-size:13px">${escapeHtml(args.error)}</div>`
-    : '';
-  const intentUrl = args.androidIntentUrl || buildAndroidIntentUrl(args.appUrl);
-  const saIntent = escapeHtml(intentUrl || args.appUrl);
-
-  // Use Android intent URL with explicit package — bypasses chooser entirely.
-  // Falls back to plain usforever:// on iOS/desktop.
-  const iUrl = JSON.stringify(intentUrl);
-  const aUrl = JSON.stringify(args.appUrl);
-  const headScript = args.appUrl
-    ? '<script>(function(){' +
-      'var isAnd=/android/i.test(navigator.userAgent);' +
-      'var u=isAnd?' + iUrl + ':' + aUrl + ';' +
-      'if(u){window.location.replace(u);}' +
-      '})();</script>'
-    : '';
-
-  return (
-    `<!doctype html><html><head><meta charset="utf-8"/>` +
-    `<meta name="viewport" content="width=device-width,initial-scale=1"/>` +
-    `<title>${st}</title>` +
-    headScript +
-    `<style>body{font-family:system-ui;margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}.c{max-width:500px;border:1px solid #eee;border-radius:16px;padding:20px}a.b{display:block;padding:12px;border-radius:12px;text-align:center;background:#111;color:#fff;font-weight:700;text-decoration:none;margin-top:10px}</style>` +
-    `</head><body><div class="c"><h3>${st}</h3>${se}` +
-    (args.appUrl ? `<a class="b" href="${saIntent}">Open in UsForever</a>` : '') +
-    `</div></body></html>`
-  );
-}
+// HTML redirect page extracted into routes/shareLinkPage.ts.
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
@@ -419,7 +378,7 @@ router.post('/resolve/:slug', async (req: Request, res: Response) => {
 });
 
 // GET /api/share/photos
-router.get('/photos', async (req: Request, res: Response) => {
+sharePhotosRouter.get('/photos', async (req: Request, res: Response) => {
   try {
     let albumId = '';
     const bearer = String(req.headers.authorization || '').trim();
@@ -516,7 +475,7 @@ router.get('/photos', async (req: Request, res: Response) => {
 });
 
 // GET /api/r
-router.get('/redirect', async (req: Request, res: Response) => {
+shareRedirectRouter.get('/', async (req: Request, res: Response) => {
   const slug = String((req.query?.slug as string) || '');
   const rawToken = String((req.query?.t as string) || '');
   if (!slug || !rawToken) return res.status(400).json({ error: 'slug and t required' });
@@ -530,7 +489,7 @@ router.get('/redirect', async (req: Request, res: Response) => {
 });
 
 // GET /api/s/:slug
-router.get('/:slug', async (req: Request, res: Response) => {
+shareGateRouter.get('/:slug', async (req: Request, res: Response) => {
   const slug = String(req.params.slug || '');
   const rawToken = String((req.query?.t as string) || '');
 
@@ -608,4 +567,10 @@ router.get('/', authRequired, async (req: Request, res: Response) => {
   }
 });
 
+export {
+  router as shareLinkRouter,
+  shareGateRouter,
+  shareRedirectRouter,
+  sharePhotosRouter,
+};
 export default router;
