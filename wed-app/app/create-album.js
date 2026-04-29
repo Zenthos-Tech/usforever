@@ -72,15 +72,10 @@ function normalizeName(v) {
   return String(v || '').replace(/\s+/g, ' ').trim();
 }
 
-const API_BASE = String(
-  API_URL ||
-    process.env.EXPO_PUBLIC_API_BASE_URL ||
-    process.env.EXPO_PUBLIC_API_URL ||
-    process.env.EXPO_PUBLIC_API_BASE ||
-    ''
-)
-  .trim()
-  .replace(/\/+$/, '');
+// API_URL already resolves env vars in utils/api.ts. Stripping the duplicated
+// process.env fallbacks here so we only have one source of truth and so a
+// missing config doesn't silently hide behind whichever shadow var was set.
+const API_BASE = String(API_URL || '').trim().replace(/\/+$/, '');
 
 const ALBUMS_PATH = '/albums';
 
@@ -206,6 +201,8 @@ const weddingId = useMemo(() => {
 const isDeepLink = !!deepSlug && !!deepToken;
 const deepLinkRole = String(deepRole || '').trim().toLowerCase();
 
+const needsPassword = params?.needsPassword === 'true';
+
 // needsPassword means it's a locked share link — always guest/photographer, never couple
 const isGuestMode = isDeepLink && (needsPassword || deepLinkRole === 'guest' || deepLinkRole === 'photographer');
 const isCoupleDeepLink = isDeepLink && deepLinkRole === 'couple';
@@ -218,8 +215,6 @@ const isCouple = isNativeCoupleSession;
 
 // keep role value safe
 const role = deepLinkRole || (isGuestMode ? 'guest' : 'couple');
-
-const needsPassword = params?.needsPassword === 'true';
 
   const footerRef = useRef(null);
 
@@ -1110,7 +1105,14 @@ useEffect(() => {
             }}
           >
             <TouchableOpacity
-              onPress={() => router.push('/face-consent')}
+              onPress={() =>
+                router.push({
+                  pathname: '/face-consent',
+                  // Pass through the deep-link wedding id so guests who never
+                  // logged in still hit the right Rekognition collection.
+                  params: weddingId ? { weddingId: String(weddingId) } : {},
+                })
+              }
               activeOpacity={0.85}
               style={{
                 width: facialCard,

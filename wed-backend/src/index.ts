@@ -21,10 +21,49 @@ import weddingRoutes from './routes/wedding';
 import contactRoutes from './routes/contact';
 
 const app = express();
-const upload = multer({ dest: '/tmp/uploads/' });
+
+// Selfie uploads. We cap the request size, restrict mime to image/* (the only
+// accepted type — Rekognition rejects anything else anyway), and let multer
+// stream the bytes to /tmp. Handlers must unlink the temp file when done.
+const upload = multer({
+  dest: '/tmp/uploads/',
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10 MB — Rekognition's max for Bytes input
+    files: 1,
+  },
+  fileFilter: (_req, file, cb) => {
+    if (!file || !file.mimetype || !file.mimetype.startsWith('image/')) {
+      return cb(new Error('Only image uploads are allowed') as any);
+    }
+    cb(null, true);
+  },
+});
+
+// CORS — production must set CORS_ALLOWED_ORIGINS to a comma-separated list
+// (e.g. https://app.usforever.com,https://usforever.com). Empty list keeps the
+// permissive `*` behaviour for local development only.
+const isProd = process.env.NODE_ENV === 'production';
+const allowedOrigins = env.CORS_ALLOWED_ORIGINS
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+if (isProd && allowedOrigins.length === 0) {
+  console.warn(
+    '[cors] CORS_ALLOWED_ORIGINS is empty in production — refusing all browser origins.'
+  );
+}
 
 app.use(cors({
-  origin: '*',
+  origin: (origin, cb) => {
+    // Non-browser clients (mobile app, server-to-server) send no Origin header.
+    if (!origin) return cb(null, true);
+    if (allowedOrigins.length === 0) {
+      // Dev-only fallback. In prod the warning above fires and we deny below.
+      return cb(null, !isProd);
+    }
+    return cb(null, allowedOrigins.includes(origin));
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'ngrok-skip-browser-warning'],
 }));
