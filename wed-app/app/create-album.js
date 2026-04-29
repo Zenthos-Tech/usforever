@@ -194,6 +194,8 @@ const weddingId = useMemo(() => {
 const isDeepLink = !!deepSlug && !!deepToken;
 const deepLinkRole = String(deepRole || '').trim().toLowerCase();
 
+const needsPassword = params?.needsPassword === 'true';
+
 // needsPassword means it's a locked share link — always guest/photographer, never couple
 const isGuestMode = isDeepLink && (needsPassword || deepLinkRole === 'guest' || deepLinkRole === 'photographer');
 const isCoupleDeepLink = isDeepLink && deepLinkRole === 'couple';
@@ -206,8 +208,6 @@ const isCouple = isNativeCoupleSession;
 
 // keep role value safe
 const role = deepLinkRole || (isGuestMode ? 'guest' : 'couple');
-
-const needsPassword = params?.needsPassword === 'true';
 
   const footerRef = useRef(null);
 
@@ -1098,7 +1098,14 @@ useEffect(() => {
             }}
           >
             <TouchableOpacity
-              onPress={() => router.push('/face-consent')}
+              onPress={() =>
+                router.push({
+                  pathname: '/face-consent',
+                  // Pass through the deep-link wedding id so guests who never
+                  // logged in still hit the right Rekognition collection.
+                  params: weddingId ? { weddingId: String(weddingId) } : {},
+                })
+              }
               activeOpacity={0.85}
               style={{
                 width: facialCard,

@@ -43,9 +43,15 @@ router.post('/send-otp', async (req: Request, res: Response) => {
 
     let user = await User.findOne({ contact_no: contactNumber });
     if (!user) {
+      // Don't synthesize a fake email — leaving it null lets us identify
+      // OTP-only users distinctly from email-verified ones, and stops
+      // user_<phone>@otp.com strings from leaking into Rekognition logs and
+      // the contact-form reply-to fallback.
       user = await User.create({
-        username: `user_${contactNumber}`, email: `user_${contactNumber}@otp.com`,
-        contact_no: contactNumber, confirmed: false, blocked: false,
+        username: `user_${contactNumber}`,
+        contact_no: contactNumber,
+        confirmed: false,
+        blocked: false,
       });
     }
 

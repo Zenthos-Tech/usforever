@@ -1,10 +1,16 @@
 import path from 'path';
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 
 export const toBytes = (v: any): number => {
   const n = Number(v || 0);
   if (!Number.isFinite(n) || n < 0) return 0;
   return Math.floor(n);
+};
+
+/** True if the value is a valid 24-char hex Mongo ObjectId. */
+export const isValidObjectId = (v: any): boolean => {
+  return typeof v === 'string' && mongoose.Types.ObjectId.isValid(v) && /^[a-f\d]{24}$/i.test(v);
 };
 
 export const toAlbumId = (album: any): number | null => {
@@ -62,7 +68,7 @@ export const mixNames = (a: any, b: any) => {
 export const randAZ = (len = 3) => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   let out = '';
-  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < len; i++) out += chars[crypto.randomInt(0, chars.length)];
   return out;
 };
 

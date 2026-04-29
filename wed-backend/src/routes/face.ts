@@ -76,7 +76,7 @@ router.post('/search', async (req: Request, res: Response) => {
 
     if (!file) return res.status(400).json({ error: 'image file is required' });
 
-    const imageBuffer = fs.readFileSync(file.path);
+    const imageBuffer = await fsp.readFile(file.path);
     const { faceMatches, photoIds, collectionName } = await searchFaceInWeddingCollection({ weddingId, imageBuffer, threshold: 70, maxFaces: 20 });
 
     if (!photoIds.length) return res.json({ data: { success: true, collectionName, count: 0, photos: [] } });

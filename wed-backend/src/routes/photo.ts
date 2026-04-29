@@ -7,7 +7,7 @@ import { Wedding } from '../models/Wedding';
 import { Album } from '../models/Album';
 import { Photo } from '../models/Photo';
 import { User } from '../models/User';
-import { toBytes, formatUploadedLabel, slugify, normalizePhone, safeExtFromName, buildCoupleFolder, generateS3Key } from '../utils/helpers';
+import { toBytes, formatUploadedLabel, slugify, normalizePhone, safeExtFromName, buildCoupleFolder, generateS3Key, isValidObjectId } from '../utils/helpers';
 
 const router = Router();
 
@@ -31,6 +31,7 @@ router.post('/presign', async (req: Request, res: Response) => {
     const phone = normalizePhone(wedding.phone);
     const coupleFolder = buildCoupleFolder(coupleSlug, phone, 0);
 
+    if (!isValidObjectId(albumId)) return res.status(400).json({ error: 'invalid albumId' });
     const album = await Album.findById(albumId).select('weddingId title').lean();
     if (!album) return res.status(400).json({ error: 'album not found' });
     if (album.weddingId !== String(weddingId)) return res.status(400).json({ error: 'album does not belong to this weddingId' });
@@ -52,14 +53,12 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const { image_url, album, uploaded_by, userId, size_bytes, file_name, checksum, duplicate_group, media_type, mime_type } = req.body?.data || {};
     if (!image_url) return res.status(400).json({ error: 'image_url is required' });
+    if (!album) return res.status(400).json({ error: 'album is required' });
+    if (!isValidObjectId(album)) return res.status(400).json({ error: 'invalid album id' });
 
-    let albumId: string | null = null;
-    let albumData: any = null;
-    if (album) {
-      albumData = await Album.findById(album).select('weddingId title').lean();
-      if (!albumData) return res.status(400).json({ error: `Album ${album} does not exist` });
-      albumId = String(albumData._id);
-    }
+    const albumData = await Album.findById(album).select('weddingId title').lean();
+    if (!albumData) return res.status(400).json({ error: `Album ${album} does not exist` });
+    const albumId: string = String(albumData._id);
 
     const rawUserId = uploaded_by ?? userId;
     let uploadedById: string | null = null;
@@ -98,7 +97,7 @@ router.get('/storage-summary', async (req: Request, res: Response) => {
     const weddingId = String(req.query?.weddingId || '').trim();
     if (!weddingId) return res.status(400).json({ error: 'weddingId is required' });
 
-    const TOTAL_STORAGE_BYTES = 300 * 1024 * 1024 * 1024;
+    const TOTAL_STORAGE_BYTES = env.STORAGE_CAP_GIB * 1024 * 1024 * 1024;
     const albumIds = (await Album.find({ weddingId }).select('_id').lean()).map((a) => a._id);
 
     if (!albumIds.length) return res.json({ data: { totalBytes: TOTAL_STORAGE_BYTES, usedBytes: 0, remainingBytes: TOTAL_STORAGE_BYTES, imageBytes: 0, videoBytes: 0 } });
@@ -156,6 +155,7 @@ router.post('/check-duplicate', async (req: Request, res: Response) => {
     const { albumId, weddingId, fileName, checksum, size_bytes } = req.body || {};
     if (!albumId) return res.status(400).json({ error: 'albumId is required' });
     if (!weddingId) return res.status(400).json({ error: 'weddingId is required' });
+    if (!isValidObjectId(albumId)) return res.status(400).json({ error: 'invalid albumId' });
 
     const album = await Album.findById(albumId).select('weddingId').lean();
     if (!album) return res.status(400).json({ error: 'album not found' });
@@ -280,8 +280,10 @@ router.get('/', async (req: Request, res: Response) => {
     const uid = String(req.query?.userId || req.query?.uploaded_by || '').trim();
     if (uid) filter.uploadedById = uid;
 
-    // get total count before applying cursor filter
-    const totalCount = await Photo.countDocuments(filter);
+    // Only run countDocuments on the first page (no cursor). On a 10k-photo
+    // album this skips an expensive query for every "load more" tap; the
+    // client already has the count from page 1 of the session.
+    const totalCount = cursor ? null : await Photo.countDocuments(filter);
 
     // cursor is the _id of the last item from the previous page
     // since we sort by createdAt desc, we fetch items created before the cursor item

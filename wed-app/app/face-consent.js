@@ -1,5 +1,5 @@
 import { BlurView } from 'expo-blur';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   Pressable,
@@ -22,6 +22,7 @@ const clamp = (v, min, max) => Math.max(min, Math.min(v, max));
 
 export default function FaceConsentScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
   const [agreed, setAgreed] = useState(false);
@@ -35,7 +36,11 @@ export default function FaceConsentScreen() {
 
   const handleContinue = () => {
     if (!agreed) return;
-    router.push('/face-recognition');
+    const weddingIdParam = String(params?.weddingId || '').trim();
+    router.push({
+      pathname: '/face-recognition',
+      params: weddingIdParam ? { weddingId: weddingIdParam } : {},
+    });
   };
 
   return (

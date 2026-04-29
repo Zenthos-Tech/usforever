@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -31,14 +31,16 @@ const clamp = (v, min, max) => Math.max(min, Math.min(v, max));
 
 export default function FaceRecognitionScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
-  const { weddingId } = useWedding() || {};
-  // Guests pick up the share-access accessToken from ImagesContext after the
-  // /resolve handshake. Couples use the user JWT from AsyncStorage. We try
-  // the guest token first so a logged-in couple following someone else's
-  // share link still uses the correct token for the shared wedding.
-  const { shareAccess } = useImages() || {};
+  const { weddingId: contextWeddingId } = useWedding() || {};
+
+  // Prefer the deep-link weddingId so guests who never logged in can still
+  // search the right wedding. Fall back to the locally-logged-in couple's
+  // weddingId for the in-app couple flow.
+  const paramWeddingId = String(params?.weddingId || '').trim();
+  const weddingId = paramWeddingId || contextWeddingId || '';
 
   const [imageAsset, setImageAsset] = useState(null);
   const [loading, setLoading] = useState(false);
