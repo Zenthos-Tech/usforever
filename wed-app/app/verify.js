@@ -73,7 +73,7 @@ async function fetchWithApiFallback(apiBase, path, options) {
   return last || { ok: false, error: "unknown" };
 }
 
-async function ensureDefaultAlbumsOnLogin({ apiBase, weddingId, userId }) {
+async function ensureDefaultAlbumsOnLogin({ apiBase, weddingId, userId, jwt }) {
   if (!apiBase) return { ok: false, reason: "missing_api_base" };
   const w = String(weddingId || "").trim();
   if (!isNumericId(w)) return { ok: false, reason: "missing_wedding_id" };
@@ -82,7 +82,13 @@ async function ensureDefaultAlbumsOnLogin({ apiBase, weddingId, userId }) {
 
   const r = await fetchWithApiFallback(apiBase, `/albums/ensure-defaults`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      // Album endpoints now require auth — forward the JWT we just received
+      // from /verify-otp (it's also already in AsyncStorage).
+      ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
+    },
     body: JSON.stringify({
       weddingId: String(w),
       ...(isNumericId(u) ? { userId: String(u) } : {}),
@@ -331,6 +337,7 @@ export default function VerifyScreen() {
           apiBase: API_URL,
           weddingId: weddingIdFromApi,
           userId: userIdFromApi,
+          jwt: json?.jwt,
         });
 
         if (ensured?.ok) {
