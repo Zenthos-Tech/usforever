@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authRequired, AuthRequest } from '../middleware/auth';
+import { tvAuthMiddleware, TvAuthRequest } from '../middleware/tvAuth';
 import * as tvPairService from '../services/tvPairService';
 
 const router = Router();
@@ -95,7 +96,6 @@ router.post('/confirm', authRequired, async (req: AuthRequest, res: Response) =>
 });
 
 // POST /api/tv/pair/heartbeat (tv-auth — called by the TV app every ~20s to signal it's alive)
-import { tvAuthMiddleware, TvAuthRequest } from '../middleware/tvAuth';
 router.post('/heartbeat', tvAuthMiddleware as any, async (req: TvAuthRequest, res: Response) => {
   try {
     const pairingId = (req as TvAuthRequest).tv?.pairingId;

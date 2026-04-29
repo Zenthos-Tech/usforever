@@ -73,7 +73,7 @@ async function fetchWithApiFallback(apiBase, path, options) {
   return last || { ok: false, error: "unknown" };
 }
 
-async function ensureDefaultAlbumsOnLogin({ apiBase, weddingId, userId }) {
+async function ensureDefaultAlbumsOnLogin({ apiBase, weddingId, userId, jwt }) {
   if (!apiBase) return { ok: false, reason: "missing_api_base" };
   const w = String(weddingId || "").trim();
   if (!isNumericId(w)) return { ok: false, reason: "missing_wedding_id" };
@@ -82,7 +82,13 @@ async function ensureDefaultAlbumsOnLogin({ apiBase, weddingId, userId }) {
 
   const r = await fetchWithApiFallback(apiBase, `/albums/ensure-defaults`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      // Album endpoints now require auth — forward the JWT we just received
+      // from /verify-otp (it's also already in AsyncStorage).
+      ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
+    },
     body: JSON.stringify({
       weddingId: String(w),
       ...(isNumericId(u) ? { userId: String(u) } : {}),
@@ -271,11 +277,18 @@ export default function VerifyScreen() {
         setWeddingData({ weddingId: String(weddingIdFromApi) });
       }
 
-      // Always fetch profile photo from backend when we have a weddingId
+      // Always fetch profile photo from backend when we have a weddingId.
+      // Send the bearer token we just stored above so the backend can lock
+      // /photos/profile-photo down without breaking the login flow.
       let profilePhotoSignedUrl = '';
       if (isNumericId(weddingIdFromApi)) {
         try {
-          const photoRes = await fetch(`${API_URL}/photos/profile-photo?weddingId=${weddingIdFromApi}`);
+          const photoRes = await fetch(
+            `${API_URL}/photos/profile-photo?weddingId=${weddingIdFromApi}`,
+            json?.jwt
+              ? { headers: { Authorization: `Bearer ${json.jwt}` } }
+              : undefined
+          );
           const photoData = await photoRes.json();
           profilePhotoSignedUrl = photoData?.data?.url || '';
         } catch {}
@@ -324,6 +337,7 @@ export default function VerifyScreen() {
           apiBase: API_URL,
           weddingId: weddingIdFromApi,
           userId: userIdFromApi,
+          jwt: json?.jwt,
         });
 
         if (ensured?.ok) {

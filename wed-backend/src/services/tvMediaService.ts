@@ -5,28 +5,55 @@ import { buildSignedReadUrl } from '../config/s3';
 export async function listAlbums({ weddingId }: { weddingId: string }) {
   if (!weddingId) return { weddingId, albums: [] };
 
-  const albums = await Album.find({ weddingId, hidden: { $ne: true }, deletedByUser: { $ne: true } })
-    .select('title systemKey _id')
-    .lean();
+  // Single aggregation for cover + count, then sign URLs application-side.
+  const albums = await Album.aggregate([
+    { $match: { weddingId, hidden: { $ne: true }, deletedByUser: { $ne: true } } },
+    {
+      $lookup: {
+        from: Photo.collection.name,
+        let: { aid: '$_id' },
+        pipeline: [
+          { $match: { $expr: { $eq: ['$albumId', '$$aid'] } } },
+          { $sort: { createdAt: -1, _id: -1 } },
+          { $limit: 1 },
+          { $project: { image_url: 1 } },
+        ],
+        as: 'cover',
+      },
+    },
+    {
+      $lookup: {
+        from: Photo.collection.name,
+        let: { aid: '$_id' },
+        pipeline: [
+          { $match: { $expr: { $eq: ['$albumId', '$$aid'] } } },
+          { $count: 'n' },
+        ],
+        as: 'countAgg',
+      },
+    },
+    {
+      $project: {
+        title: 1,
+        systemKey: 1,
+        coverImageUrl: { $ifNull: [{ $arrayElemAt: ['$cover.image_url', 0] }, null] },
+        photoCount: { $ifNull: [{ $arrayElemAt: ['$countAgg.n', 0] }, 0] },
+      },
+    },
+  ]);
 
   const result = await Promise.all(
-    albums.map(async (album) => {
-      const event = (album as any).title;
-      const albumId = String((album as any)._id);
-
-      const coverPhoto = await Photo.findOne({ albumId: (album as any)._id })
-        .sort({ createdAt: -1 })
-        .select('image_url')
-        .lean();
-
-      let coverUrl = null;
-      if (coverPhoto?.image_url) {
-        try { coverUrl = await buildSignedReadUrl(String(coverPhoto.image_url)); } catch {}
+    albums.map(async (album: any) => {
+      let coverUrl: string | null = null;
+      if (album.coverImageUrl) {
+        try { coverUrl = await buildSignedReadUrl(String(album.coverImageUrl)); } catch {}
       }
-
-      const photoCount = await Photo.countDocuments({ albumId: (album as any)._id });
-
-      return { event, albumId, coverUrl, photoCount };
+      return {
+        event: album.title,
+        albumId: String(album._id),
+        coverUrl,
+        photoCount: album.photoCount,
+      };
     })
   );
 

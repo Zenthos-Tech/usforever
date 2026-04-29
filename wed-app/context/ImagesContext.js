@@ -1,12 +1,12 @@
 // context/ImagesContext.js
-// ✅ NOW matches YOUR Strapi routes/controllers exactly:
+// Image cache + selection / favourites state, backed by wed-backend's
+// Express + Mongoose API:
 //
-// GET    /photos?albumId=123      -> photo.find
-// GET    /photos/by-album?albumId -> photo.find (alias; optional)
-// GET    /photos/:id              -> photo.findOne (not used here)
-// DELETE /photos/:id              -> photo.deletePhoto
-//
-// ALSO: keeps guest deeplink logic if you have /share/photos route elsewhere.
+//   GET    /api/photos?albumId=…       — paginated album photo list
+//   GET    /api/photos/:id             — single photo (not used here)
+//   DELETE /api/photos/:id             — remove a photo
+//   GET    /api/share/photos?…         — guest deep-link photo list
+//   PUT    /api/tv/selections          — sync selectedFolder for the paired TV
 
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -83,12 +83,20 @@ function getApiBase() {
   return `${base}/api`;
 }
 
-async function apiFetch(path, options) {
+async function apiFetch(path, options = {}) {
   const baseApi = getApiBase();
   const p = String(path || '').startsWith('/') ? String(path) : `/${String(path)}`;
   const url = `${baseApi}${p}`;
 
-  const res = await fetch(url, options);
+  // Photo endpoints now require the user JWT — pull it from the same key
+  // verify.js writes after OTP login and forward it on every call.
+  const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+  const headers = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(options.headers || {}),
+  };
+
+  const res = await fetch(url, { ...options, headers });
   const raw = await res.text();
 
   let json = null;
@@ -123,8 +131,6 @@ export const ImagesProvider = ({ children }) => {
   // pagination state per album: { [albumId]: { cursor, hasMore, loading } }
   const [paginationByAlbum, setPaginationByAlbum] = useState({});
 
-  console.log(paginationByAlbum,'PAGINATION');
-
   const images = useMemo(() => {
     const id = String(activeAlbumId || '');
     if (!id) return [];
@@ -139,30 +145,35 @@ export const ImagesProvider = ({ children }) => {
   const [selectedFolder, setSelectedFolder] = useState({});
   const [previewFromSelected, setPreviewFromSelected] = useState(false);
 
-  // Shared helper — push current selected IDs to backend
-  const syncSelectionsRef = useRef(null);
-  syncSelectionsRef.current = (overrideFolder) => {
+  // Push the current selected IDs to the backend. Single source of truth —
+  // see the debounced effect below. The per-mutation handlers (`addToSelected`,
+  // `removeFromSelected`, `clearSelected`) used to call this directly, which
+  // caused 5–10 PUTs per multi-select burst.
+  const pushSelectionsToBackend = async (folder) => {
     const weddingId = String(weddingData?.weddingId || '').trim();
     if (!weddingId) return;
-    const folder = overrideFolder !== undefined ? overrideFolder : selectedFolder;
-    const photoIds = Object.values(folder).flat().map((it) => String(it?.id || '')).filter(Boolean);
+    const photoIds = Object.values(folder || {}).flat().map((it) => String(it?.id || '')).filter(Boolean);
     const base = String(API_URL || '').replace(/\/+$/, '');
-    (async () => {
-      try {
-        const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
-        if (!token) return;
-        await fetch(`${base}/tv/selections`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ weddingId, photoIds }),
-        });
-      } catch (_) {}
-    })();
+    try {
+      const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+      if (!token) return;
+      await fetch(`${base}/tv/selections`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ weddingId, photoIds }),
+      });
+    } catch (_) {}
   };
 
-  // Also sync on any selectedFolder change as a safety net
+  // Debounced sync — coalesces a burst of selectedFolder mutations into one
+  // PUT after the user stops swiping for 400 ms.
+  const SYNC_DEBOUNCE_MS = 400;
   useEffect(() => {
-    syncSelectionsRef.current?.();
+    const timer = setTimeout(() => {
+      pushSelectionsToBackend(selectedFolder);
+    }, SYNC_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFolder, weddingData?.weddingId]);
 
   const [readOnly, setReadOnly] = useState(false);
@@ -332,7 +343,6 @@ export const ImagesProvider = ({ children }) => {
       const out = { ...(prev || {}) };
       if (next.length) out[key] = next;
       else delete out[key];
-      syncSelectionsRef.current?.(out);
       return out;
     });
   };
@@ -341,13 +351,11 @@ export const ImagesProvider = ({ children }) => {
     const key = String(event || '').trim();
     if (!key) {
       setSelectedFolder({});
-      syncSelectionsRef.current?.({});
       return;
     }
     setSelectedFolder((prev) => {
       const out = { ...(prev || {}) };
       delete out[key];
-      syncSelectionsRef.current?.(out);
       return out;
     });
   };

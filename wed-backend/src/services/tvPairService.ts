@@ -6,13 +6,26 @@ import { TvPairSession } from '../models/TvPairSession';
 function addMinutes(date: Date, minutes: number) { return new Date(date.getTime() + minutes * 60 * 1000); }
 function isExpired(d?: Date | null) { return !d || new Date(d).getTime() <= Date.now(); }
 
+// Last 6 hex chars of the UUID, uppercased — keeps the previous human-typed
+// pairing code stable while letting us index it.
+function shortCodeFromPairingId(pairingId: string): string {
+  return pairingId.replace(/-/g, '').slice(-6).toUpperCase();
+}
+// TV app heartbeats every ~20s; allow ~4 missed beats before declaring the
+// session dead. Anything below the heartbeat cadence will flap PAIRED
+// sessions to DISCONNECTED almost immediately.
+const TV_DISCONNECT_THRESHOLD_SEC = 90;
+
 export async function startPairing({ shareType = 'family' }: { shareType?: string } = {}) {
   const ttlMin = Math.max(1, Math.min(30, env.TV_PAIR_TTL_MINUTES));
   const pairingId = crypto.randomUUID();
   const expiresAt = addMinutes(new Date(), ttlMin);
 
   await TvPairSession.create({
-    pairingId, status: 'WAITING', expiresAt,
+    pairingId,
+    shortCode: shortCodeFromPairingId(pairingId),
+    status: 'WAITING',
+    expiresAt,
     shareType: shareType === 'photographer' ? 'photographer' : 'family',
   });
 
@@ -28,10 +41,11 @@ export async function getStatus({ pairingId }: { pairingId: string }) {
     return { pairingId, status: 'EXPIRED' as const, expiresAt: row.expiresAt };
   }
 
-  // If PAIRED but TV hasn't sent a heartbeat in 90s, report as DISCONNECTED
+  // If PAIRED but TV hasn't sent a heartbeat in TV_DISCONNECT_THRESHOLD_SEC,
+  // report as DISCONNECTED.
   if (row.status === 'PAIRED' && row.tvLastSeenAt) {
     const staleSec = (Date.now() - new Date(row.tvLastSeenAt).getTime()) / 1000;
-    if (staleSec > 8) {
+    if (staleSec > TV_DISCONNECT_THRESHOLD_SEC) {
       return { pairingId: row.pairingId, status: 'DISCONNECTED' as any, expiresAt: row.expiresAt, weddingId: row.weddingId, tvToken: row.tvToken };
     }
   }
@@ -43,12 +57,12 @@ export async function confirmPairing({ pairingId, weddingId, userId }: { pairing
   // Try exact UUID match first
   let row = await TvPairSession.findOne({ pairingId }).lean();
 
-  // Fallback: mobile enters XX-XX-XX (6 chars with dashes) → match against last 6 chars of UUID
+  // Fallback: mobile enters XX-XX-XX (6 chars). Look the row up by the
+  // indexed `shortCode` column instead of scanning every WAITING session.
   if (!row) {
     const shortCode = pairingId.replace(/-/g, '').toUpperCase();
     if (shortCode.length === 6) {
-      const pending = await TvPairSession.find({ status: 'WAITING' }).lean();
-      const matched = pending.find(s => s.pairingId.replace(/-/g, '').slice(-6).toUpperCase() === shortCode);
+      const matched = await TvPairSession.findOne({ shortCode, status: 'WAITING' }).lean();
       if (matched) { row = matched; pairingId = matched.pairingId; }
     }
   }
@@ -79,10 +93,10 @@ export async function getActiveByWeddingId({ weddingId }: { weddingId: string })
   const row = await TvPairSession.findOne({ weddingId, status: 'PAIRED' }).lean();
   if (!row) return null;
 
-  // If TV hasn't sent a heartbeat in 90s, treat as disconnected
+  // If TV hasn't sent a heartbeat in TV_DISCONNECT_THRESHOLD_SEC, treat as disconnected
   if (row.tvLastSeenAt) {
     const staleSec = (Date.now() - new Date(row.tvLastSeenAt).getTime()) / 1000;
-    if (staleSec > 8) return { pairingId: row.pairingId, status: 'DISCONNECTED' as any, weddingId: row.weddingId };
+    if (staleSec > TV_DISCONNECT_THRESHOLD_SEC) return { pairingId: row.pairingId, status: 'DISCONNECTED' as any, weddingId: row.weddingId };
   }
 
   return { pairingId: row.pairingId, status: row.status, expiresAt: row.expiresAt, weddingId: row.weddingId };
