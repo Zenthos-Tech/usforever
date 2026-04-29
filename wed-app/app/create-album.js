@@ -21,6 +21,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import Colors from '../theme/colors';
 import { API_URL } from '../utils/api';
+import { getAuthToken } from '../utils/authToken';
 
 import AlbumFooterBar, { STORAGE_REMAINING_KEY } from '../components/AlbumFooterBar';
 import AlbumHeader from '../components/Albumheader';
@@ -79,16 +80,23 @@ const API_BASE = String(API_URL || '').trim().replace(/\/+$/, '');
 
 const ALBUMS_PATH = '/albums';
 
-const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
+// Dev-only logger — calls become no-ops in release builds so URLs, payloads,
+// and tokens don't leak to logcat/device logs.
+const dlog = (...args) => {
+  if (__DEV__) {
+    // eslint-disable-next-line no-console
+    console.log(...args);
+  }
+};
 
 async function apiFetch(path, options = {}) {
   if (!API_BASE) throw new Error('Missing API base URL');
 
   const url = `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
   // Album endpoints now require auth (see backend batch 12). Pull the JWT
-  // from AsyncStorage and forward it on every call so the couple's session
-  // can read/mutate their own albums.
-  const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+  // via the SecureStore-backed helper and forward it on every call so the
+  // couple's session can read/mutate their own albums.
+  const token = await getAuthToken();
   const headers = {
     Accept: 'application/json',
     'Content-Type': 'application/json',
@@ -230,9 +238,9 @@ const role = deepLinkRole || (isGuestMode ? 'guest' : 'couple');
   }, []); // intentionally only on mount
 
   useEffect(() => {
-    console.log('API_BASE =', API_BASE);
-    console.log('weddingData full =', weddingData);
-    console.log('resolved weddingId =', weddingId);
+    dlog('API_BASE =', API_BASE);
+    dlog('weddingData full =', weddingData);
+    dlog('resolved weddingId =', weddingId);
   }, [weddingData, weddingId]);
 const userPhoneNumber = useMemo(
   () =>
@@ -543,7 +551,7 @@ useEffect(() => {
 
       setFolders(deduped);
     } catch (e) {
-      console.log('LOAD FOLDERS ERROR =', e);
+      dlog('LOAD FOLDERS ERROR =', e);
     }
   }, [isCouple, isGuestMode, weddingId]);
 
@@ -692,16 +700,16 @@ useEffect(() => {
             },
           };
 
-          console.log('CREATE ALBUM API_BASE =', API_BASE);
-          console.log('CREATE ALBUM weddingId =', weddingId);
-          console.log('CREATE ALBUM payload =', payload);
+          dlog('CREATE ALBUM API_BASE =', API_BASE);
+          dlog('CREATE ALBUM weddingId =', weddingId);
+          dlog('CREATE ALBUM payload =', payload);
 
           const json = await apiFetch(`${ALBUMS_PATH}`, {
             method: 'POST',
             body: JSON.stringify(payload),
           });
 
-          console.log('CREATE ALBUM response =', json);
+          dlog('CREATE ALBUM response =', json);
 
           const createdId = json?.data?._id || json?.data?.id;
           const createdTitle = json?.data?.title || title;
@@ -716,12 +724,12 @@ useEffect(() => {
 
           await loadFoldersFromStrapi();
         } catch (e) {
-          console.log('CREATE ALBUM ERROR =', e);
+          dlog('CREATE ALBUM ERROR =', e);
           Alert.alert('Error', String(e?.message || 'Album create failed'));
           setFolders((prev) => prev.filter((f) => f.id !== tempId));
         }
       } else {
-        console.log('CREATE ALBUM skipped because API_BASE or weddingId missing', {
+        dlog('CREATE ALBUM skipped because API_BASE or weddingId missing', {
           API_BASE,
           weddingId,
         });
@@ -758,18 +766,18 @@ useEffect(() => {
         try {
           const payload = { title };
 
-          console.log('RENAME ALBUM id =', idStr);
-          console.log('RENAME ALBUM payload =', payload);
+          dlog('RENAME ALBUM id =', idStr);
+          dlog('RENAME ALBUM payload =', payload);
 
           const json = await apiFetch(`${ALBUMS_PATH}/${idStr}/rename`, {
             method: 'PUT',
             body: JSON.stringify(payload),
           });
 
-          console.log('RENAME ALBUM response =', json);
+          dlog('RENAME ALBUM response =', json);
           await loadFoldersFromStrapi();
         } catch (e) {
-          console.log('RENAME ALBUM ERROR =', e);
+          dlog('RENAME ALBUM ERROR =', e);
           setFolders(prevFoldersSnapshot);
           Alert.alert('Error', String(e?.message || 'Album rename failed'));
         }
@@ -798,8 +806,8 @@ useEffect(() => {
     const targetFolder =
       folders.find((f) => String(f.id || '') === idStr) || activeFolder || null;
 
-    console.log('DELETE CLICKED folder =', targetFolder);
-    console.log('DELETE CLICKED idStr =', idStr);
+    dlog('DELETE CLICKED folder =', targetFolder);
+    dlog('DELETE CLICKED idStr =', idStr);
 
     setShowDeletePopup(false);
     setShowFolderActions(false);
@@ -824,13 +832,13 @@ useEffect(() => {
     }
 
     try {
-      console.log('DELETE ALBUM REQUEST URL =', `${API_BASE}${ALBUMS_PATH}/${idStr}`);
+      dlog('DELETE ALBUM REQUEST URL =', `${API_BASE}${ALBUMS_PATH}/${idStr}`);
 
       const json = await apiFetch(`${ALBUMS_PATH}/${idStr}`, {
         method: 'DELETE',
       });
 
-      console.log('DELETE ALBUM RESPONSE =', json);
+      dlog('DELETE ALBUM RESPONSE =', json);
 
       const freedBytes = Number(json?.freedBytes || 0);
       if (freedBytes > 0 && footerRef.current?.refundBytes) {
@@ -845,7 +853,7 @@ useEffect(() => {
             footerRef.current.setRemainingBytes(next);
           }
         } catch (e) {
-          console.log('REFUND STORAGE ERROR =', e);
+          dlog('REFUND STORAGE ERROR =', e);
         }
       }
 
@@ -855,7 +863,7 @@ useEffect(() => {
 
       await loadFoldersFromStrapi();
     } catch (e) {
-      console.log('DELETE ALBUM ERROR =', e);
+      dlog('DELETE ALBUM ERROR =', e);
       Alert.alert('Error', String(e?.message || 'Album delete failed'));
     }
   }, [

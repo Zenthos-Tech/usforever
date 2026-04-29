@@ -5,12 +5,10 @@ import Colors from '@/theme/colors';
 import { useLayoutTokens } from '@/ui/layout';
 
 import { API_URL } from '@/utils/api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAuthToken } from '@/utils/authToken';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-
-const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useImages } from '../context/ImagesContext';
@@ -40,7 +38,7 @@ export default function HomeScreen() {
 
     (async () => {
       try {
-        const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+        const token = await getAuthToken();
         const res = await fetch(
           `${API_URL}/photos/profile-photo?weddingId=${wid}`,
           token ? { headers: { Authorization: `Bearer ${token}` } } : undefined

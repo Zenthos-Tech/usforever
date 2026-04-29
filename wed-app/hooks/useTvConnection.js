@@ -1,13 +1,12 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { API_URL } from '../utils/api';
+import { getAuthToken } from '../utils/authToken';
 
-const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
 const TV_POLL_INTERVAL_MS = 8000;
 
 async function getAuthHeaders() {
-  const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+  const token = await getAuthToken();
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),

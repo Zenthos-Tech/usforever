@@ -1,6 +1,5 @@
 
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from 'expo-blur';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
@@ -32,6 +31,8 @@ import { useWedding } from '../context/WeddingContext';
 import PlusIcon from '../assets/images/UPLOADIMAGES.svg'; // or correct path
 import { useTvConnection } from '../hooks/useTvConnection';
 import { API_URL } from '../utils/api';
+import { getAuthToken } from '../utils/authToken';
+import { consumeBytes, refundBytes } from '../utils/userStorageBudget';
 import ConnectToTVModal from './ConnectToTVModal';
 import ConnectionSuccessModal from './ConnectionSuccessModal';
 // ✅ SVG icons
@@ -51,56 +52,12 @@ const isNumericId = (v) => {
   return s.length > 0 && s !== 'undefined' && s !== 'null';
 };
 
-// =========================
-// ✅ Dynamic Storage helpers (shared with AlbumFooterBar)
-// =========================
-const STORAGE_REMAINING_KEY = 'USFOREVER_STORAGE_REMAINING_BYTES_V1';
-const DEFAULT_STORAGE_LIMIT_BYTES = 300 * 1024 * 1024 * 1024;
-
 const clamp0 = (n) => Math.max(0, Number(n || 0) || 0);
-
-function makePerUserStorageKey(baseKey, phoneNumber) {
-  const safePhone = String(phoneNumber || '').trim();
-  if (!safePhone) return String(baseKey);
-  return `${String(baseKey)}_${safePhone}`;
-}
-
-async function getRemainingBytes(phone) {
-  try {
-    const key = makePerUserStorageKey(STORAGE_REMAINING_KEY, phone);
-    const raw = await AsyncStorage.getItem(key);
-    const parsed = Number(raw);
-    if (Number.isFinite(parsed)) return clamp0(parsed);
-  } catch {}
-  return DEFAULT_STORAGE_LIMIT_BYTES;
-}
-
-async function setRemainingBytes(next, phone) {
-  try {
-    const key = makePerUserStorageKey(STORAGE_REMAINING_KEY, phone);
-    await AsyncStorage.setItem(key, String(clamp0(next)));
-  } catch {}
-}
-
-async function consumeBytes(bytes, phone) {
-  const delta = clamp0(bytes);
-  if (delta <= 0) return;
-  const cur = await getRemainingBytes(phone);
-  await setRemainingBytes(Math.max(0, cur - delta), phone);
-}
-
-async function refundBytes(bytes, phone) {
-  const delta = clamp0(bytes);
-  if (delta <= 0) return;
-  const cur = await getRemainingBytes(phone);
-  await setRemainingBytes(cur + delta, phone);
-}
 
 const readSizeBytesFromItem = (item) => {
   const b = Number(item?.sizeBytes ?? item?.size_bytes ?? 0) || 0;
   return clamp0(b);
 };
-// =========================
 
 function getApiBase() {
   const base = String(API_URL || '').replace(/\/+$/, '');
@@ -109,14 +66,12 @@ function getApiBase() {
   return `${base}/api`;
 }
 
-const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
-
 async function apiFetch(path, options = {}) {
   const baseApi = getApiBase();
   const p = String(path || '').startsWith('/') ? String(path) : `/${String(path)}`;
   const url = `${baseApi}${p}`;
 
-  const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+  const token = await getAuthToken();
   const headers = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {}),

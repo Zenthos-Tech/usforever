@@ -4,7 +4,6 @@ import {
   IndexFacesCommand,
   SearchFacesByImageCommand,
 } from '@aws-sdk/client-rekognition';
-import AWS from 'aws-sdk';
 import crypto from 'crypto';
 import { env } from './env';
 import { Wedding } from '../models/Wedding';

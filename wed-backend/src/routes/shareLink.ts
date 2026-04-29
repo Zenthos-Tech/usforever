@@ -1,17 +1,28 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
-import { buildSignedReadUrl } from '../config/s3';
+import { buildSignedReadUrl, buildSignedReadUrls } from '../config/s3';
 import { ShareLink } from '../models/ShareLink';
 import { Album } from '../models/Album';
 import { Wedding } from '../models/Wedding';
 import { Photo } from '../models/Photo';
 import { PasscodeAttempt } from '../models/PasscodeAttempt';
-import { escapeHtml } from '../utils/helpers';
 import { authRequired } from '../middleware/auth';
 import { renderPage } from './shareLinkPage';
+import {
+  hashToken,
+  buildSlug,
+  isExpired,
+  getPublicBase,
+  buildAppUrl,
+  buildExpoGo,
+  buildIntent,
+  buildPhotographerUrl,
+  buildGuestWebUrl,
+  signPhotoJwt,
+  verifyPhotoJwt,
+} from './shareLinkHelpers';
 
 // Four sub-routers, one per public URL prefix. index.ts mounts each at its
 // proper Express base path so we don't need the old `req.url` rewriting (which
@@ -20,138 +31,51 @@ const router = Router();              // /api/share-links/{generate,resolve/:slu
 const shareGateRouter = Router();     // /api/s/:slug
 const shareRedirectRouter = Router(); // /api/r
 const sharePhotosRouter = Router();   // /api/share/photos
-const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
-// ─── Token helpers ────────────────────────────────────────────────────────────
-
-/** SHA-256 hash of a raw token. Raw tokens are never stored in the DB. */
-function hashToken(token: string): string {
-  return crypto.createHash('sha256').update(token).digest('hex');
-}
-
-// ─── Slug helpers ─────────────────────────────────────────────────────────────
-
-function twoLetters(): string {
-  return (
-    LETTERS[Math.floor(Math.random() * 26)] +
-    LETTERS[Math.floor(Math.random() * 26)]
-  );
-}
-
-function buildSlug(pre: string, role: string): string {
-  return `${pre}${twoLetters()}-${role}`;
-}
-
-// ─── URL builders ─────────────────────────────────────────────────────────────
-
-function isExpired(d: any): boolean {
-  return !!(d && new Date(d).getTime() < Date.now());
-}
-
-/**
- * Returns the public base URL for generating share links.
- *
- * Prefers the configured PUBLIC_APP_BASE_URL env var. In production we refuse
- * to derive the URL from the request's Host header, which is attacker-
- * controlled and would let a third party poison generated share links. In
- * development we fall back to the request host for convenience.
- */
-function getPublicBase(req: Request): string {
-  const configured = env.PUBLIC_APP_BASE_URL.replace(/\/+$/, '');
-  if (configured) return configured;
-  if (process.env.NODE_ENV === 'production') {
-    throw Object.assign(new Error('PUBLIC_APP_BASE_URL is not configured'), { status: 500 });
-  }
-  return `${req.protocol}://${req.get('host')}`;
-}
-
-function buildAppUrl(slug: string, token: string): string {
-  return `${env.APP_SCHEME}://share/${encodeURIComponent(slug)}?t=${encodeURIComponent(token)}`;
-}
-
-function buildExpoGo(slug: string, token: string): string {
-  if (!env.EXPO_GO_BASE) return '';
-  return `${env.EXPO_GO_BASE}/--/share/${encodeURIComponent(slug)}?t=${encodeURIComponent(token)}`;
-}
-
-function buildIntent(u: string): string {
-  if (!u.startsWith('exp://')) return '';
-  return `intent://${u.replace(/^exp:\/\//, '')}#Intent;scheme=exp;package=host.exp.exponent;end`;
-}
-
-function buildPhotographerUrl(slug: string, token: string): string {
-  return `${env.PHOTOGRAPHER_WEB_APP}/photographer?slug=${encodeURIComponent(slug)}&t=${encodeURIComponent(token)}`;
-}
-
-function buildGuestWebUrl(slug: string, token: string): string {
-  return `${env.GUEST_WEB_URL.replace(/\/+$/, '')}/share/${encodeURIComponent(slug)}?t=${encodeURIComponent(token)}`;
-}
-
-// ─── JWT helpers ──────────────────────────────────────────────────────────────
-
-function signPhotoJwt(payload: object): string {
-  if (!env.PHOTOGRAPHER_JWT_SECRET) throw new Error('PHOTOGRAPHER_JWT_SECRET missing');
-  return jwt.sign(payload, env.PHOTOGRAPHER_JWT_SECRET, {
-    expiresIn: env.PHOTOGRAPHER_JWT_EXPIRES_IN as any,
-  });
-}
-
-function verifyPhotoJwt(token: string): any {
-  if (!env.PHOTOGRAPHER_JWT_SECRET) throw new Error('PHOTOGRAPHER_JWT_SECRET missing');
-  const d = jwt.verify(token, env.PHOTOGRAPHER_JWT_SECRET) as any;
-  // Accept both the new 'share-access' typ (guests + photographers) and the
-  // legacy 'photographer-share-access' typ so old tokens keep working.
-  const validTyp = d?.typ === 'share-access' || d?.typ === 'photographer-share-access';
-  if (!validTyp || !d?.weddingId) {
-    throw new Error('Invalid JWT');
-  }
-  return d;
-}
 
 // ─── Passcode rate limiter (Mongo, TTL-backed) ───────────────────────────────
 // Limits brute-force attempts against passcode-protected links. Backed by the
-// PasscodeAttempt collection with a TTL on `resetAt` so windows expire on
-// their own. Survives restarts and works across multiple app instances.
+// PasscodeAttempt collection with a TTL on `resetAt`, so windows expire on
+// their own. Two parallel counters:
+//   • per-slug (PASSCODE_LIMIT = 10 / 2 min) — narrow, so a leaked URL can be
+//     tried at most 10 times per window.
+//   • per-IP   (PASSCODE_IP_LIMIT = 30 / 2 min) — broader cap so an attacker
+//     can't roll through different slugs to amplify.
+// Both counters are bumped regardless of slug validity, so probing for valid
+// (slug, token) pairs consumes the same per-IP budget as guessing passcodes.
 
 const PASSCODE_LIMIT = 10;
 const PASSCODE_IP_LIMIT = 30;
 const PASSCODE_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
-
-async function checkPasscodeRateLimit(slug: string): Promise<boolean> {
-  const now = Date.now();
-  const newReset = new Date(now + PASSCODE_WINDOW_MS);
-
-  // Reset the window if the existing row's resetAt is in the past — atomic
-  // upsert keyed on (slug, resetAt < now) followed by an unconditional $inc.
-  await PasscodeAttempt.updateOne(
-    { slug, resetAt: { $lt: new Date(now) } },
-    { $set: { count: 0, resetAt: newReset } }
-  );
-  const updated = await PasscodeAttempt.findOneAndUpdate(
-    { slug },
-    {
-      $inc: { count: 1 },
-      $setOnInsert: { resetAt: newReset },
-    },
-    { upsert: true, new: true }
-  );
-
-  return updated.count <= PASSCODE_LIMIT;
-}
 
 function clientIp(req: Request): string {
   const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0]?.trim();
   return fwd || req.ip || 'unknown';
 }
 
-function checkPasscodeRateLimit(slug: string, req: Request): boolean {
+async function bumpAttempts(key: string, limit: number): Promise<boolean> {
+  const now = Date.now();
+  const newReset = new Date(now + PASSCODE_WINDOW_MS);
+
+  // Reset the window if the existing row's resetAt is in the past, then $inc
+  // unconditionally. Two atomic ops; matches the original Mongo design.
+  await PasscodeAttempt.updateOne(
+    { slug: key, resetAt: { $lt: new Date(now) } },
+    { $set: { count: 0, resetAt: newReset } }
+  );
+  const updated = await PasscodeAttempt.findOneAndUpdate(
+    { slug: key },
+    { $inc: { count: 1 }, $setOnInsert: { resetAt: newReset } },
+    { upsert: true, new: true }
+  );
+
+  return updated.count <= limit;
+}
+
+async function checkPasscodeRateLimit(slug: string, req: Request): Promise<boolean> {
   const slugKey = `slug:${slug || '_'}`;
   const ipKey = `ip:${clientIp(req)}`;
-  // Both counters get bumped regardless of slug validity. A request for an
-  // unknown slug still consumes from the IP budget, so brute-forcing slugs
-  // burns the same per-IP budget as brute-forcing passcodes.
-  const slugOk = bumpAttempts(slugKey, PASSCODE_LIMIT);
-  const ipOk = bumpAttempts(ipKey, PASSCODE_IP_LIMIT);
+  const slugOk = await bumpAttempts(slugKey, PASSCODE_LIMIT);
+  const ipOk = await bumpAttempts(ipKey, PASSCODE_IP_LIMIT);
   return slugOk && ipOk;
 }
 
@@ -221,15 +145,15 @@ async function getVisibleAlbums(wid: string) {
       },
     ]);
 
-    const withCovers = await Promise.all(
-      albums.map(async (a: any) => {
-        let coverUrl: string | null = null;
-        if (a.coverImageUrl) {
-          try { coverUrl = await buildSignedReadUrl(String(a.coverImageUrl)); } catch {}
-        }
-        return { id: a._id, title: a.title, coverUrl };
-      })
-    );
+    // Sign all cover URLs in one batch instead of per-album loops. Failures
+    // for one key fall back to null in that slot rather than rejecting the
+    // whole list — see buildSignedReadUrls.
+    const coverUrls = await buildSignedReadUrls(albums.map((a: any) => a.coverImageUrl));
+    const withCovers = albums.map((a: any, i: number) => ({
+      id: a._id,
+      title: a.title,
+      coverUrl: coverUrls[i],
+    }));
 
     return withCovers;
   } catch {
@@ -362,7 +286,7 @@ router.post('/resolve/:slug', async (req: Request, res: Response) => {
     // Bump rate-limit counters before the slug lookup so probing for valid
     // (slug, token) pairs consumes the same per-IP budget as guessing
     // passcodes. Returns 429 once either the per-slug or per-IP cap is hit.
-    if (!checkPasscodeRateLimit(slug, req)) {
+    if (!(await checkPasscodeRateLimit(slug, req))) {
       return res.status(429).json({ error: 'Too many attempts, try again later' });
     }
 
@@ -372,9 +296,6 @@ router.post('/resolve/:slug', async (req: Request, res: Response) => {
     if (isExpired(link.expiresAt)) return res.status(403).json({ error: 'Link expired' });
 
     if (link.requiresPasscode) {
-      if (!(await checkPasscodeRateLimit(slug))) {
-        return res.status(429).json({ error: 'Too many passcode attempts, try again later' });
-      }
       const p = String(req.body?.passcode ?? '').trim();
       if (!p) {
         // Return non-sensitive wedding preview so the app can render
@@ -471,7 +392,7 @@ sharePhotosRouter.get('/photos', async (req: Request, res: Response) => {
       }
 
       // Same per-IP + per-slug throttle as /resolve — see checkPasscodeRateLimit.
-      if (!checkPasscodeRateLimit(slug, req)) {
+      if (!(await checkPasscodeRateLimit(slug, req))) {
         return res.status(429).json({ error: 'Too many attempts, try again later' });
       }
 
@@ -483,9 +404,6 @@ sharePhotosRouter.get('/photos', async (req: Request, res: Response) => {
 
       // Passcode check applies to all paths, not just /resolve
       if (link.requiresPasscode) {
-        if (!(await checkPasscodeRateLimit(slug))) {
-          return res.status(429).json({ error: 'Too many attempts, try again later' });
-        }
         const p = String((req.query?.passcode as string) || '').trim();
         if (!p) return res.status(401).json({ error: 'Passcode required' });
         if (!(await bcrypt.compare(p, String(link.passcodeHash || '')))) {

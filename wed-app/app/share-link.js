@@ -1,7 +1,6 @@
 import Colors from '@/theme/colors';
 import { useLayoutTokens } from '@/ui/layout';
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -24,15 +23,14 @@ import ShareIcon from '../assets/images/sharelink.svg';
 
 import ShareIcon2 from '../assets/images/link2.svg';
 import { API_URL } from '../utils/api';
+import { getAuthToken } from '../utils/authToken';
 import {
   computeExpiresAtISO,
   formatPrettyDate,
 } from '../utils/shareDuration';
 
-const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
-
 async function getAuthHeaders() {
-  const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+  const token = await getAuthToken();
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
   return headers;

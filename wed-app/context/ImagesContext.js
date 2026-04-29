@@ -9,11 +9,9 @@
 //   PUT    /api/tv/selections          — sync selectedFolder for the paired TV
 
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../utils/api';
 import { useWedding } from './WeddingContext';
-
-const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
+import { getAuthToken } from '../utils/authToken';
 
 const ImagesContext = createContext(undefined);
 
@@ -88,9 +86,9 @@ async function apiFetch(path, options = {}) {
   const p = String(path || '').startsWith('/') ? String(path) : `/${String(path)}`;
   const url = `${baseApi}${p}`;
 
-  // Photo endpoints now require the user JWT — pull it from the same key
-  // verify.js writes after OTP login and forward it on every call.
-  const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+  // Photo endpoints now require the user JWT — read it via the SecureStore-backed
+  // helper that verify.js wrote to after OTP login and forward it on every call.
+  const token = await getAuthToken();
   const headers = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {}),
@@ -145,35 +143,36 @@ export const ImagesProvider = ({ children }) => {
   const [selectedFolder, setSelectedFolder] = useState({});
   const [previewFromSelected, setPreviewFromSelected] = useState(false);
 
-  // Push the current selected IDs to the backend. Single source of truth —
-  // see the debounced effect below. The per-mutation handlers (`addToSelected`,
-  // `removeFromSelected`, `clearSelected`) used to call this directly, which
-  // caused 5–10 PUTs per multi-select burst.
-  const pushSelectionsToBackend = async (folder) => {
-    const weddingId = String(weddingData?.weddingId || '').trim();
-    if (!weddingId) return;
-    const photoIds = Object.values(folder || {}).flat().map((it) => String(it?.id || '')).filter(Boolean);
-    const base = String(API_URL || '').replace(/\/+$/, '');
-    try {
-      const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
-      if (!token) return;
-      await fetch(`${base}/tv/selections`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ weddingId, photoIds }),
-      });
-    } catch (_) {}
-  };
-
   // Debounced sync — coalesces a burst of selectedFolder mutations into one
-  // PUT after the user stops swiping for 400 ms.
+  // PUT after the user stops swiping for 400 ms. This is the ONLY place that
+  // talks to /api/tv/selections from this context, so a single multi-select
+  // gesture fires exactly one PUT. The per-mutation handlers
+  // (`addToSelected`, `removeFromSelected`, `clearSelected`) deliberately
+  // don't call any sync helper directly — they just update state and let
+  // this effect coalesce.
   const SYNC_DEBOUNCE_MS = 400;
   useEffect(() => {
-    const timer = setTimeout(() => {
-      pushSelectionsToBackend(selectedFolder);
+    const weddingId = String(weddingData?.weddingId || '').trim();
+    if (!weddingId) return;
+
+    const timer = setTimeout(async () => {
+      const photoIds = Object.values(selectedFolder || {})
+        .flat()
+        .map((it) => String(it?.id || ''))
+        .filter(Boolean);
+      const base = String(API_URL || '').replace(/\/+$/, '');
+      try {
+        const token = await getAuthToken();
+        if (!token) return;
+        await fetch(`${base}/tv/selections`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ weddingId, photoIds }),
+        });
+      } catch (_) {}
     }, SYNC_DEBOUNCE_MS);
+
     return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFolder, weddingData?.weddingId]);
 
   const [readOnly, setReadOnly] = useState(false);

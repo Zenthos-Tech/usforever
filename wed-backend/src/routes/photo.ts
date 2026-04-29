@@ -1,24 +1,17 @@
 import { Router, Response } from 'express';
-import crypto from 'crypto';
 import { env } from '../config/env';
-import { buildSignedReadUrl, buildSignedPutUrl, deleteS3Object, headS3Object } from '../config/s3';
+import { buildSignedReadUrl, deleteS3Object, headS3Object } from '../config/s3';
 import { indexPhotoIntoCollection } from '../config/rekognition';
-import { Wedding } from '../models/Wedding';
 import { Album } from '../models/Album';
 import { Photo } from '../models/Photo';
 import { User } from '../models/User';
-import {
-  toBytes,
-  formatUploadedLabel,
-  slugify,
-  normalizePhone,
-  safeExtFromName,
-  buildCoupleFolder,
-  generateS3Key,
-  isValidObjectId,
-} from '../utils/helpers';
+import { toBytes, formatUploadedLabel, isValidObjectId } from '../utils/helpers';
 import { authRequired, AuthRequest } from '../middleware/auth';
 import { loadOwnedWedding } from '../utils/ownership';
+import {
+  presignPhotoUpload,
+  presignProfilePhotoUpload,
+} from '../services/photoService';
 
 const router = Router();
 
@@ -68,35 +61,18 @@ router.post('/presign', async (req: AuthRequest, res: Response) => {
     const fileName = String(originalFileName || '').trim();
     const mime = String(mimeType || '').trim();
 
-    if (!env.AWS_BUCKET) return res.status(400).json({ error: 'AWS_BUCKET env missing' });
     if (!weddingId) return res.status(400).json({ error: 'weddingId is required' });
     if (!albumId) return res.status(400).json({ error: 'albumId is required' });
     if (!fileName) return res.status(400).json({ error: 'originalFileName is required' });
     if (!mime) return res.status(400).json({ error: 'mimeType is required' });
-    if (!isValidObjectId(albumId)) return res.status(400).json({ error: 'invalid albumId' });
 
     const own = await loadOwnedWedding(req.user!.id, { weddingId });
     if (!own.ok) return res.status(own.status).json({ error: own.error });
 
-    const wedding = own.wedding;
-    const coupleSlug = slugify(wedding.weddingSlug || `wedding-${weddingId}`);
-    const phone = normalizePhone(wedding.phone);
-    const coupleFolder = buildCoupleFolder(coupleSlug, phone, 0);
-
-    if (!isValidObjectId(albumId)) return res.status(400).json({ error: 'invalid albumId' });
-    const album = await Album.findById(albumId).select('weddingId title').lean();
-    if (!album) return res.status(400).json({ error: 'album not found' });
-    if (String(album.weddingId) !== String(weddingId)) {
-      return res.status(400).json({ error: 'album does not belong to this weddingId' });
-    }
-
-    const albumFolder = slugify(album.title);
-    const ext = safeExtFromName(fileName) || (mime.startsWith('video/') ? '.mp4' : '.jpg');
-    const key = generateS3Key(coupleFolder, albumFolder, ext);
-    const uploadUrl = await buildSignedPutUrl(key, mime);
-
-    res.json({ data: { key, uploadUrl, bucket: env.AWS_BUCKET } });
+    const data = await presignPhotoUpload({ weddingId, albumId, fileName, mime });
+    res.json({ data });
   } catch (err: any) {
+    if (err?.expose && err?.status) return res.status(err.status).json({ error: err.message });
     console.error('PRESIGN ERROR:', err);
     res.status(500).json({ error: `presign failed: ${err?.message || 'unknown'}` });
   }
@@ -156,7 +132,7 @@ router.get('/storage-summary', async (req: AuthRequest, res: Response) => {
     const own = await loadOwnedWedding(req.user!.id, { weddingId });
     if (!own.ok) return res.status(own.status).json({ error: own.error });
 
-    const TOTAL_STORAGE_BYTES = 300 * 1024 * 1024 * 1024;
+    const TOTAL_STORAGE_BYTES = env.STORAGE_CAP_GIB * 1024 * 1024 * 1024;
     const albumIds = (await Album.find({ weddingId }).select('_id').lean()).map((a) => a._id);
 
     if (!albumIds.length) return res.json({ data: { totalBytes: TOTAL_STORAGE_BYTES, usedBytes: 0, remainingBytes: TOTAL_STORAGE_BYTES, imageBytes: 0, videoBytes: 0 } });
@@ -298,24 +274,22 @@ router.post('/resolve-duplicate', async (req: AuthRequest, res: Response) => {
 router.post('/profile-photo/presign', async (req: AuthRequest, res: Response) => {
   try {
     const { weddingId, originalFileName, mimeType } = req.body || {};
-    if (!env.AWS_BUCKET || !weddingId || !originalFileName || !mimeType) return res.status(400).json({ error: 'weddingId, originalFileName, mimeType required' });
+    if (!weddingId || !originalFileName || !mimeType) return res.status(400).json({ error: 'weddingId, originalFileName, mimeType required' });
 
     const own = await loadOwnedWedding(req.user!.id, { weddingId });
     if (!own.ok) return res.status(own.status).json({ error: own.error });
 
-    const wedding = own.wedding;
-    const coupleSlug = slugify(wedding.weddingSlug || `wedding-${weddingId}`);
-    const coupleFolder = buildCoupleFolder(coupleSlug, normalizePhone(wedding.phone), 0);
-    const ext = safeExtFromName(String(originalFileName)) || '.jpg';
-    const ts = new Date().toISOString().replace(/[:.]/g, '-');
-    const key = `${coupleFolder}/userInformation/${ts}_${crypto.randomBytes(4).toString('hex')}${ext}`;
-    const uploadUrl = await buildSignedPutUrl(key, String(mimeType));
-
-    if (wedding.profilePhoto) { try { await deleteS3Object(wedding.profilePhoto); } catch (e) {} }
-    await Wedding.findByIdAndUpdate(weddingId, { profilePhoto: key });
-
-    res.json({ data: { key, uploadUrl, bucket: env.AWS_BUCKET } });
-  } catch (err: any) { console.error('presignProfilePhoto error', err); res.status(500).json({ error: err.message }); }
+    const data = await presignProfilePhotoUpload({
+      weddingId,
+      fileName: String(originalFileName),
+      mime: String(mimeType),
+    });
+    res.json({ data });
+  } catch (err: any) {
+    if (err?.expose && err?.status) return res.status(err.status).json({ error: err.message });
+    console.error('presignProfilePhoto error', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/photos/profile-photo
@@ -350,10 +324,20 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const uid = String(req.query?.userId || req.query?.uploaded_by || '').trim();
     if (uid) filter.uploadedById = uid;
 
-    // Only run countDocuments on the first page (no cursor). On a 10k-photo
-    // album this skips an expensive query for every "load more" tap; the
-    // client already has the count from page 1 of the session.
-    const totalCount = cursor ? null : await Photo.countDocuments(filter);
+    // Only run countDocuments on the first page (no cursor). The client
+    // already has the count from page 1 of the session and uses it just for
+    // the "X items" header; on a 10k-photo album we don't want to pay the
+    // count on every "load more" tap. We also cap the count with maxTimeMS so
+    // even a heavy first page can't add unbounded wall-clock latency — it'll
+    // resolve to null instead, and the client falls back to displayImages.length.
+    let totalCount: number | null = null;
+    let countPromise: Promise<number | null> | null = null;
+    if (!cursor) {
+      countPromise = (Photo.countDocuments(filter) as any)
+        .maxTimeMS(2000)
+        .lean()
+        .catch(() => null);
+    }
 
     // cursor is the _id of the last item from the previous page
     // since we sort by createdAt desc, we fetch items created before the cursor item
@@ -367,12 +351,18 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       }
     }
 
-    const photos = await Photo.find(filter)
-      .populate('albumId', 'title')
-      .populate('uploadedById', 'username email')
-      .sort({ createdAt: -1, _id: -1 })
-      .limit(limit + 1)
-      .lean();
+    // Run the count (if any) concurrently with the photo fetch so its latency
+    // overlaps with the find query rather than serialising before it.
+    const [photos, countResult] = await Promise.all([
+      Photo.find(filter)
+        .populate('albumId', 'title')
+        .populate('uploadedById', 'username email')
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(limit + 1)
+        .lean(),
+      countPromise || Promise.resolve(null),
+    ]);
+    if (countResult != null) totalCount = countResult as number;
 
     const hasMore = photos.length > limit;
     const page = hasMore ? photos.slice(0, limit) : photos;

@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -16,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/theme/colors';
 import { API_URL } from '../utils/api';
+import { getAuthToken } from '../utils/authToken';
 
 import CloseIcon from '../assets/images/close.svg';
 import CopyIcon from '../assets/images/copy.svg';
@@ -24,11 +24,10 @@ import EnabledIcon from '../assets/images/enabled.svg';
 import LinkIcon from '../assets/images/link2.svg';
 import LogoTitle from '../assets/images/logo-title.svg';
 
-const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
 const clamp = (v, min, max) => Math.max(min, Math.min(v, max));
 
 async function getAuthHeaders() {
-  const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+  const token = await getAuthToken();
   const h = { 'Content-Type': 'application/json' };
   if (token) h.Authorization = `Bearer ${token}`;
   return h;
