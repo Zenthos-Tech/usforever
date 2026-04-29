@@ -85,7 +85,7 @@ Severity guide: **High** = exploitable / data loss / app crash, **Med** = real b
 
 ### Code quality / design
 
-- [ ] **[Severity: Med]** Two AWS S3 SDKs are imported (`aws-sdk` v2 and `@aws-sdk/client-s3` v3 + presigner). Pick one — v2 is in maintenance mode through 2025 and bloats the bundle.
+- [x] **[Severity: Med]** Two AWS S3 SDKs are imported (`aws-sdk` v2 and `@aws-sdk/client-s3` v3 + presigner). Pick one — v2 is in maintenance mode through 2025 and bloats the bundle.
 - [x] **[Severity: Low]** `wed-backend/src/routes/photo.ts`, `routes/album.ts`, etc. — handlers mix validation, DB access, S3 calls, and signing in one function. Extracting a thin service layer (like `services/tvPairService.ts`) would simplify testing.
 - [x] **[Severity: Low]** `wed-backend/src/models/Cluster.ts`, `models/Recognition.ts` — declared but referenced nowhere. Delete or wire up.
 - [x] **[Severity: Low]** `wed-backend/src/routes/shareLink.ts` — single 600+ line file; the HTML render, slug helpers, and DB-helper closures could split out cleanly.
