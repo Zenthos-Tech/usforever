@@ -1,8 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import { API_URL } from '../utils/api';
 
 const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
+const TV_POLL_INTERVAL_MS = 8000;
 
 async function getAuthHeaders() {
   const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
@@ -53,11 +55,35 @@ export function useTvConnection(weddingId) {
     checkActive(weddingId);
   }, [weddingId, checkActive]);
 
-  // Poll every 8s to detect TV-side logout
+  // Poll every 8s to detect TV-side logout. Pause polling when the app is
+  // backgrounded so we don't burn battery / API quota while invisible.
   useEffect(() => {
     if (!weddingId) return;
-    const interval = setInterval(() => checkActive(weddingId), 4000);
-    return () => clearInterval(interval);
+
+    let interval = null;
+    const start = () => {
+      if (interval) return;
+      checkActive(weddingId);
+      interval = setInterval(() => checkActive(weddingId), TV_POLL_INTERVAL_MS);
+    };
+    const stop = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    if (AppState.currentState === 'active') start();
+
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') start();
+      else stop();
+    });
+
+    return () => {
+      stop();
+      sub.remove();
+    };
   }, [weddingId, checkActive]);
 
   const onConnected = useCallback(async (pid) => {

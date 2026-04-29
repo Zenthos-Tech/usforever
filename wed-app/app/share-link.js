@@ -179,8 +179,6 @@ export default function ShareModal({
     const generateLink = async () => {
       if (!visible) return;
 
-      console.log('[ShareModal] generateLink START', { weddingId, albumId, phone, shareType, duration, accessType });
-
       setShareUrlDisplay('');
       setShareUrlFull('');
       setGenerateError('');
@@ -191,10 +189,8 @@ export default function ShareModal({
         const ph = String(phone || '').trim();
 
         const aidNum = toNumericId(albumId);
-        console.log('[ShareModal] resolved inputs', { wid, ph, aidNum });
 
         if (!wid || ph.length < 4 || !aidNum) {
-          console.warn('[ShareModal] missing/invalid inputs', { wid, ph, albumId, aidNum });
           setGenerateError('Missing album or wedding info. Please try again.');
           return;
         }
@@ -214,7 +210,6 @@ export default function ShareModal({
         };
 
         const url = joinUrl(API_URL, 'share-links/generate');
-        console.log('[ShareModal] fetching', url, JSON.stringify(body));
         const headers = await getAuthHeaders();
 
         const res = await fetch(url, {
@@ -223,9 +218,7 @@ export default function ShareModal({
           body: JSON.stringify(body),
         });
 
-        console.log('[ShareModal] response status', res.status);
         const raw = await res.text();
-        console.log('[ShareModal] raw response', raw);
 
         let data = {};
         try {
@@ -240,27 +233,21 @@ export default function ShareModal({
             return;
           }
           const msg = data?.error || data?.message || 'Failed to generate link.';
-          console.warn('[ShareModal] API error', msg, data);
           if (!cancelled) setGenerateError(msg);
           return;
         }
         if (cancelled) return;
 
         const urlFromApi = data?.url || data?.shareUrl || data?.data?.url || '';
-        console.log('[ShareModal] urlFromApi', urlFromApi);
-        if (!urlFromApi) {
-          console.warn('[ShareModal] no URL in response', data);
-          return;
-        }
+        if (!urlFromApi) return;
 
         const finalShare = urlFromApi;
 
-        console.log('[ShareModal] finalShare', finalShare);
         setShareUrlFull(finalShare);
         const masked = finalShare.replace(/^https?:\/\//, '').replace(/^www\./, '');
         setShareUrlDisplay(masked);
-      } catch (e) {
-        console.error('[ShareModal] CAUGHT ERROR', e?.message, e?.stack, e);
+      } catch {
+        if (!cancelled) setGenerateError('Failed to generate link. Please try again.');
       } finally {
         if (!cancelled) setLoading(false);
       }

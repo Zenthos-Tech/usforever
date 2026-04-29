@@ -141,10 +141,15 @@ export default function SplashScreen() {
 
   const skipRedirect = useRef(false);
 
+  // Match `<scheme>://share/<slug>` and `<host>/share/<slug>` only — the old
+  // `includes('/share/')` matched anything containing `/share/` anywhere in
+  // the URL (e.g. `/notshare/foo`).
+  const SHARE_PATH_RE = /(?:^|[/])share\/[^/?#]+/;
+
   // Catch warm-start deep links (app already running when link is tapped)
   useEffect(() => {
     const sub = Linking.addEventListener('url', ({ url }) => {
-      if (url && (url.includes('//share/') || url.includes('/share/'))) {
+      if (url && SHARE_PATH_RE.test(url)) {
         skipRedirect.current = true;
       }
     });
@@ -172,7 +177,7 @@ export default function SplashScreen() {
       const url = await Linking.getInitialURL();
       if (cancelled) return;
 
-      if (url && (url.includes('//share/') || url.includes('/share/'))) {
+      if (url && SHARE_PATH_RE.test(url)) {
         skipRedirect.current = true;
         // Extract slug and token and navigate explicitly — Expo Router may not
         // auto-route when initialRouteName forces index as the stack root.
@@ -191,8 +196,10 @@ export default function SplashScreen() {
 
       if (skipRedirect.current || cancelled) return;
 
-      // 3. Normal launch — wait for splash then go to onboarding
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      // 3. Normal launch — let the splash logo animation play out (~600 ms)
+      // before navigating away. The previous 3 s wait was arbitrary and
+      // blocked every cold start visibly.
+      await new Promise((resolve) => setTimeout(resolve, 600));
       if (cancelled || skipRedirect.current) return;
 
       router.replace('/onboarding');

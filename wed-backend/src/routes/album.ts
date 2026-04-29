@@ -17,27 +17,58 @@ router.get('/', async (req: Request, res: Response) => {
     const weddingId = String(req.query?.weddingId || '').trim();
     if (!weddingId) return res.status(400).json({ error: 'weddingId is required' });
 
-    const filter: any = { weddingId, hidden: { $ne: true }, deletedByUser: { $ne: true } };
-    const albums = await Album.find(filter).sort({ createdAt: 1 }).limit(200).lean();
+    // One aggregation instead of one Photo.findOne + one Photo.countDocuments
+    // per album. The Photos compound index `(albumId, createdAt -1, _id -1)`
+    // already exists, so the $lookup that pulls the most-recent photo per
+    // album walks that index.
+    const albums = await Album.aggregate([
+      { $match: { weddingId, hidden: { $ne: true }, deletedByUser: { $ne: true } } },
+      { $sort: { createdAt: 1 } },
+      { $limit: 200 },
+      {
+        $lookup: {
+          from: Photo.collection.name,
+          let: { aid: '$_id' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$albumId', '$$aid'] } } },
+            { $sort: { createdAt: -1, _id: -1 } },
+            { $limit: 1 },
+            { $project: { image_url: 1 } },
+          ],
+          as: 'cover',
+        },
+      },
+      {
+        $lookup: {
+          from: Photo.collection.name,
+          let: { aid: '$_id' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$albumId', '$$aid'] } } },
+            { $count: 'n' },
+          ],
+          as: 'countAgg',
+        },
+      },
+      {
+        $addFields: {
+          coverImageUrl: { $ifNull: [{ $arrayElemAt: ['$cover.image_url', 0] }, null] },
+          photoCount: { $ifNull: [{ $arrayElemAt: ['$countAgg.n', 0] }, 0] },
+        },
+      },
+      { $project: { cover: 0, countAgg: 0 } },
+    ]);
 
-    // attach cover image (most recent photo) for each album
+    // Sign cover URLs in parallel — kept outside the aggregation since the
+    // signing path is application-side.
     const albumsWithCovers = await Promise.all(
       albums.map(async (album: any) => {
-        const firstPhoto = await Photo.findOne({ albumId: album._id })
-          .sort({ createdAt: -1 })
-          .select('image_url')
-          .lean();
-
-        let coverUrl = null;
-        if (firstPhoto?.image_url) {
-          try {
-            coverUrl = await buildSignedReadUrl(String(firstPhoto.image_url));
-          } catch {}
+        let coverUrl: string | null = null;
+        const key = album.coverImageUrl;
+        if (key) {
+          try { coverUrl = await buildSignedReadUrl(String(key)); } catch {}
         }
-
-        const photoCount = await Photo.countDocuments({ albumId: album._id });
-
-        return { ...album, coverUrl, photoCount };
+        const { coverImageUrl: _drop, ...rest } = album;
+        return { ...rest, coverUrl };
       })
     );
 
