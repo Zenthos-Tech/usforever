@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -16,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_URL } from '../utils/api';
+import { getAuthToken } from '../utils/authToken';
 
 import PrimaryButton from '@/components/PrimaryButton';
 import CameraIcon from '../assets/images/camera.svg';
@@ -24,8 +24,6 @@ import UploadIcon from '../assets/images/upload2.svg';
 import { useImages } from '../context/ImagesContext';
 import { useWedding } from '../context/WeddingContext';
 import Colors from '../theme/colors';
-
-const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
 
 const clamp = (v, min, max) => Math.max(min, Math.min(v, max));
 
@@ -173,7 +171,7 @@ export default function FaceRecognitionScreen() {
       const guestAccessToken = String(shareAccess?.accessToken || '').trim();
       const userJwt = guestAccessToken
         ? ''
-        : String((await AsyncStorage.getItem(AUTH_TOKEN_KEY)) || '').trim();
+        : String((await getAuthToken()) || '').trim();
       const bearer = guestAccessToken || userJwt;
 
       const response = await fetch(`${API_URL}/face/search`, {

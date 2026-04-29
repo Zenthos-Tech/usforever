@@ -9,11 +9,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { API_URL } from '../utils/api';
+import { getAuthToken, clearAuthToken } from '../utils/authToken';
 
 const WeddingContext = createContext(undefined);
 
 const STORAGE_KEY = 'USFOREVER_WEDDING_CTX_V1';
-const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
 
 // Single source of truth for the backend base URL — `utils/api.ts` already
 // resolves the env var. API_URL ends with `/api`, so strip it before tacking
@@ -158,8 +158,9 @@ export const WeddingProvider = ({ children }) => {
     setWeddingDataState(initialWeddingData);
 
     try {
-      await AsyncStorage.multiRemove([STORAGE_KEY, AUTH_TOKEN_KEY]);
+      await AsyncStorage.removeItem(STORAGE_KEY);
     } catch {}
+    await clearAuthToken();
   };
 
   const setPhone = (phone) => setWeddingData({ phone });
@@ -212,7 +213,7 @@ export const WeddingProvider = ({ children }) => {
   // -------------------------
 
   const getAuthHeaders = async () => {
-    const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+    const token = await getAuthToken();
     const h = { 'Content-Type': 'application/json' };
     if (token) h.Authorization = `Bearer ${token}`;
     return h;

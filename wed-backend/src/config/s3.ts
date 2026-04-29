@@ -33,6 +33,25 @@ export async function buildSignedReadUrl(key: string): Promise<string> {
   return getSignedUrl(s3v3, cmd, { expiresIn: READ_URL_EXPIRES_SECONDS });
 }
 
+/**
+ * Sign a batch of S3 keys concurrently. Returns one signed URL per input key
+ * in the same order; on failure for a given key the slot is `null` rather
+ * than throwing so a single bad key can't take down a list response.
+ *
+ * Centralising the loop here lets list endpoints state their intent
+ * ("sign this batch") rather than open-coding `Promise.all(map(buildSignedReadUrl))`
+ * everywhere.
+ */
+export async function buildSignedReadUrls(keys: Array<string | null | undefined>): Promise<Array<string | null>> {
+  return Promise.all(
+    keys.map(async (k) => {
+      const key = String(k || '').trim();
+      if (!key) return null;
+      try { return await buildSignedReadUrl(key); } catch { return null; }
+    })
+  );
+}
+
 export async function buildSignedPutUrl(key: string, contentType: string): Promise<string> {
   const cmd = new PutObjectCommand({
     Bucket: env.AWS_BUCKET,

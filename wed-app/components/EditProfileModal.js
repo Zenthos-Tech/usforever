@@ -29,6 +29,7 @@ import PrimaryButton from '@/components/PrimaryButton';
 import { useWedding } from '@/context/WeddingContext';
 import Colors from '@/theme/colors';
 import { API_URL } from '@/utils/api';
+import { getAuthToken } from '@/utils/authToken';
 import CalendarIcon from '../assets/images/calendar.svg';
 import ExportIcon from '../assets/images/export.svg';
 import AboutSvg from '../assets/images/about.svg';
@@ -248,7 +249,7 @@ const pickImage = async () => {
     const mimeType = asset.mimeType || 'image/jpeg';
 
     // Step 1: Get presigned URL (auth required)
-    const authToken = await AsyncStorage.getItem('USFOREVER_AUTH_TOKEN_V1');
+    const authToken = await getAuthToken();
     const presignRes = await fetch(`${API_URL}/photos/profile-photo/presign`, {
       method: 'POST',
       headers: {
@@ -327,7 +328,7 @@ const pickImage = async () => {
         const wid = String(weddingData?.weddingId || '').trim();
         const s3Key = await uploadProfilePhotoToS3(pendingPhotoRef.current);
         if (s3Key && wid && API_URL) {
-          const readToken = await AsyncStorage.getItem('USFOREVER_AUTH_TOKEN_V1');
+          const readToken = await getAuthToken();
           const readRes = await fetch(
             `${API_URL}/photos/profile-photo?weddingId=${wid}`,
             readToken ? { headers: { Authorization: `Bearer ${readToken}` } } : undefined

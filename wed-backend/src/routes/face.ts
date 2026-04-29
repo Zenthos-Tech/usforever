@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import fs from 'fs';
+import { promises as fsp } from 'fs';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import { searchFaceInWeddingCollection } from '../config/rekognition';
@@ -113,7 +113,7 @@ router.post('/search', async (req: Request, res: Response) => {
     res.status(500).json({ error: err.message });
   } finally {
     if (file?.path) {
-      try { await fs.promises.unlink(file.path); } catch {}
+      try { await fsp.unlink(file.path); } catch {}
     }
   }
 });

@@ -32,8 +32,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useOtp } from "../context/OtpContext";
 import { useWedding } from "../context/WeddingContext";
 import { API_URL } from "../utils/api";
-
-const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
+import { setAuthToken } from "../utils/authToken";
 
 const HERO_IMG = require("../assets/images/love-story.jpeg");
 
@@ -241,7 +240,7 @@ export default function VerifyScreen() {
 
       // Save auth token for API calls (e.g. TV pairing)
       if (json?.jwt) {
-        await AsyncStorage.setItem(AUTH_TOKEN_KEY, json.jwt);
+        await setAuthToken(json.jwt);
       }
 
       setOtpData({ ...(otpData || {}), is_verified: true });

@@ -6,23 +6,16 @@ import { StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'r
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '../theme/colors';
+import {
+  DEFAULT_STORAGE_LIMIT_BYTES,
+  STORAGE_REMAINING_KEY,
+  makePerUserStorageKey,
+} from '../utils/userStorageBudget';
 
 import StorageIcon from '../assets/images/Doughnut.svg';
 import FamilyIcon from '../assets/images/family&friends.svg';
 import PhotographerIcon from '../assets/images/photographer.svg';
 const clamp = (v, min, max) => Math.max(min, Math.min(v, max));
-
-// ✅ default 300GB (binary GiB style)
-const DEFAULT_STORAGE_LIMIT_BYTES = 300 * 1024 * 1024 * 1024;
-
-// ✅ base persistence key
-const STORAGE_REMAINING_KEY = 'USFOREVER_STORAGE_REMAINING_BYTES_V1';
-
-function makePerUserStorageKey(baseKey, phoneNumber) {
-  const safePhone = String(phoneNumber || '').trim();
-  if (!safePhone) return String(baseKey);
-  return `${String(baseKey)}_${safePhone}`;
-}
 
 function clamp0(n) {
   return Math.max(0, Number(n || 0) || 0);
@@ -466,3 +459,4 @@ const styles = StyleSheet.create({
 
 export default forwardRef(AlbumFooterBarInner);
 export { DEFAULT_STORAGE_LIMIT_BYTES, STORAGE_REMAINING_KEY };
+

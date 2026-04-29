@@ -6,10 +6,7 @@ import {
   Animated,
   Dimensions,
   Easing,
-  Image,
   Keyboard,
-  Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -21,9 +18,13 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import Colors from '../theme/colors';
 import { API_URL } from '../utils/api';
+import { getAuthToken } from '../utils/authToken';
 
 import AlbumFooterBar, { STORAGE_REMAINING_KEY } from '../components/AlbumFooterBar';
 import AlbumHeader from '../components/Albumheader';
+import DeleteFolderModal from '../components/DeleteFolderModal';
+import FolderHoldActionsModal from '../components/FolderHoldActionsModal';
+import { FolderTile } from '../components/FolderTile';
 import NewAlbumSheet from '../components/NewAlbumSheet';
 import RenameAlbumSheet from '../components/RenameAlbumSheet';
 import { useImages } from '../context/ImagesContext';
@@ -37,12 +38,7 @@ import ConnectToTVModal from './ConnectToTVModal';
 import ConnectionSuccessModal from './ConnectionSuccessModal';
 import ShareAccessModal from './share-access';
 /** SVG icons */
-import DeleteIcon from '../assets/images/Trash.svg';
-import RenameIcon from '../assets/images/edit3.svg';
-import { default as AlbumEmojiDefault, default as FolderIcon } from '../assets/images/folder.svg';
-import VisibleIcon from '../assets/images/lock.svg';
-import VisibleIcon2 from '../assets/images/locks.svg';
-//mew
+import AlbumEmojiDefault from '../assets/images/folder.svg';
 
 
 const clamp = (v, min, max) => Math.max(min, Math.min(v, max));
@@ -79,16 +75,23 @@ const API_BASE = String(API_URL || '').trim().replace(/\/+$/, '');
 
 const ALBUMS_PATH = '/albums';
 
-const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
+// Dev-only logger — calls become no-ops in release builds so URLs, payloads,
+// and tokens don't leak to logcat/device logs.
+const dlog = (...args) => {
+  if (__DEV__) {
+    // eslint-disable-next-line no-console
+    console.log(...args);
+  }
+};
 
 async function apiFetch(path, options = {}) {
   if (!API_BASE) throw new Error('Missing API base URL');
 
   const url = `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
   // Album endpoints now require auth (see backend batch 12). Pull the JWT
-  // from AsyncStorage and forward it on every call so the couple's session
-  // can read/mutate their own albums.
-  const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+  // via the SecureStore-backed helper and forward it on every call so the
+  // couple's session can read/mutate their own albums.
+  const token = await getAuthToken();
   const headers = {
     Accept: 'application/json',
     'Content-Type': 'application/json',
@@ -230,9 +233,9 @@ const role = deepLinkRole || (isGuestMode ? 'guest' : 'couple');
   }, []); // intentionally only on mount
 
   useEffect(() => {
-    console.log('API_BASE =', API_BASE);
-    console.log('weddingData full =', weddingData);
-    console.log('resolved weddingId =', weddingId);
+    dlog('API_BASE =', API_BASE);
+    dlog('weddingData full =', weddingData);
+    dlog('resolved weddingId =', weddingId);
   }, [weddingData, weddingId]);
 const userPhoneNumber = useMemo(
   () =>
@@ -543,7 +546,7 @@ useEffect(() => {
 
       setFolders(deduped);
     } catch (e) {
-      console.log('LOAD FOLDERS ERROR =', e);
+      dlog('LOAD FOLDERS ERROR =', e);
     }
   }, [isCouple, isGuestMode, weddingId]);
 
@@ -692,16 +695,16 @@ useEffect(() => {
             },
           };
 
-          console.log('CREATE ALBUM API_BASE =', API_BASE);
-          console.log('CREATE ALBUM weddingId =', weddingId);
-          console.log('CREATE ALBUM payload =', payload);
+          dlog('CREATE ALBUM API_BASE =', API_BASE);
+          dlog('CREATE ALBUM weddingId =', weddingId);
+          dlog('CREATE ALBUM payload =', payload);
 
           const json = await apiFetch(`${ALBUMS_PATH}`, {
             method: 'POST',
             body: JSON.stringify(payload),
           });
 
-          console.log('CREATE ALBUM response =', json);
+          dlog('CREATE ALBUM response =', json);
 
           const createdId = json?.data?._id || json?.data?.id;
           const createdTitle = json?.data?.title || title;
@@ -716,12 +719,12 @@ useEffect(() => {
 
           await loadFoldersFromStrapi();
         } catch (e) {
-          console.log('CREATE ALBUM ERROR =', e);
+          dlog('CREATE ALBUM ERROR =', e);
           Alert.alert('Error', String(e?.message || 'Album create failed'));
           setFolders((prev) => prev.filter((f) => f.id !== tempId));
         }
       } else {
-        console.log('CREATE ALBUM skipped because API_BASE or weddingId missing', {
+        dlog('CREATE ALBUM skipped because API_BASE or weddingId missing', {
           API_BASE,
           weddingId,
         });
@@ -758,18 +761,18 @@ useEffect(() => {
         try {
           const payload = { title };
 
-          console.log('RENAME ALBUM id =', idStr);
-          console.log('RENAME ALBUM payload =', payload);
+          dlog('RENAME ALBUM id =', idStr);
+          dlog('RENAME ALBUM payload =', payload);
 
           const json = await apiFetch(`${ALBUMS_PATH}/${idStr}/rename`, {
             method: 'PUT',
             body: JSON.stringify(payload),
           });
 
-          console.log('RENAME ALBUM response =', json);
+          dlog('RENAME ALBUM response =', json);
           await loadFoldersFromStrapi();
         } catch (e) {
-          console.log('RENAME ALBUM ERROR =', e);
+          dlog('RENAME ALBUM ERROR =', e);
           setFolders(prevFoldersSnapshot);
           Alert.alert('Error', String(e?.message || 'Album rename failed'));
         }
@@ -798,8 +801,8 @@ useEffect(() => {
     const targetFolder =
       folders.find((f) => String(f.id || '') === idStr) || activeFolder || null;
 
-    console.log('DELETE CLICKED folder =', targetFolder);
-    console.log('DELETE CLICKED idStr =', idStr);
+    dlog('DELETE CLICKED folder =', targetFolder);
+    dlog('DELETE CLICKED idStr =', idStr);
 
     setShowDeletePopup(false);
     setShowFolderActions(false);
@@ -824,13 +827,13 @@ useEffect(() => {
     }
 
     try {
-      console.log('DELETE ALBUM REQUEST URL =', `${API_BASE}${ALBUMS_PATH}/${idStr}`);
+      dlog('DELETE ALBUM REQUEST URL =', `${API_BASE}${ALBUMS_PATH}/${idStr}`);
 
       const json = await apiFetch(`${ALBUMS_PATH}/${idStr}`, {
         method: 'DELETE',
       });
 
-      console.log('DELETE ALBUM RESPONSE =', json);
+      dlog('DELETE ALBUM RESPONSE =', json);
 
       const freedBytes = Number(json?.freedBytes || 0);
       if (freedBytes > 0 && footerRef.current?.refundBytes) {
@@ -845,7 +848,7 @@ useEffect(() => {
             footerRef.current.setRemainingBytes(next);
           }
         } catch (e) {
-          console.log('REFUND STORAGE ERROR =', e);
+          dlog('REFUND STORAGE ERROR =', e);
         }
       }
 
@@ -855,7 +858,7 @@ useEffect(() => {
 
       await loadFoldersFromStrapi();
     } catch (e) {
-      console.log('DELETE ALBUM ERROR =', e);
+      dlog('DELETE ALBUM ERROR =', e);
       Alert.alert('Error', String(e?.message || 'Album delete failed'));
     }
   }, [
@@ -1160,99 +1163,28 @@ useEffect(() => {
         </View>
       ) : null}
 
-      <Modal
+      <FolderHoldActionsModal
         visible={showFolderActions}
-        transparent
-        animationType="fade"
-        presentationStyle="overFullScreen"
-        onRequestClose={() => closeActions()}
-      >
-        <View style={StyleSheet.absoluteFill}>
-          <Pressable
-            style={[StyleSheet.absoluteFill, { backgroundColor: 'transparent' }]}
-            onPress={() => closeActions()}
-          />
-
-          <View
-            style={[
-              styles.holdBarWrap,
-              { width: holdW, height: holdH, top: holdPos.top, left: holdPos.left },
-            ]}
-          >
-           
-   <View
-  style={[
-    StyleSheet.absoluteFill,
-    {
-      backgroundColor: '#ECEBEC',
-      borderRadius: 12,
-    },
-  ]}
-/>
-            <View
-              pointerEvents="none"
-              style={[
-                StyleSheet.absoluteFill,
-                {
-                  backgroundColor: 'transparent',
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: hexToRgba(cText, 0.10) ?? cBorder,
-                },
-              ]}
-            />
-
-            <View style={styles.holdRow}>
-              {isSelectedActive ? (
-                <>
-                  <HoldAction
-                    Icon={VisibleIcon}
-                    label="Visible"
-                  
-                    onPress={() => closeActions()}
-                  />
-                  <View
-                    style={[
-                      styles.holdDivider,
-                      { backgroundColor: hexToRgba(cText, 0.12) ?? cBorder },
-                    ]}
-                  />
-                </>
-              ) : null}
-
-              <HoldAction
-                Icon={RenameIcon}
-                label="Rename"
-                color={cText}
-                onPress={() => {
-                  const id = activeFolderId;
-                  if (!id) return;
-                  closeActions({ keepActive: true });
-                  openRenameFolder(id);
-                }}
-              />
-
-              <View
-                style={[
-                  styles.holdDivider,
-                  { backgroundColor: hexToRgba(cText, 0.12) ?? cBorder },
-                ]}
-              />
-
-              <HoldAction
-                Icon={DeleteIcon}
-                label="Delete"
-                color={cDanger}
-                onPress={() => {
-                  if (!activeFolderId) return;
-                  closeActions({ keepActive: true });
-                  setShowDeletePopup(true);
-                }}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
+        onClose={() => closeActions()}
+        holdW={holdW}
+        holdH={holdH}
+        holdPos={holdPos}
+        isSelectedActive={isSelectedActive}
+        onRename={() => {
+          const id = activeFolderId;
+          if (!id) return;
+          closeActions({ keepActive: true });
+          openRenameFolder(id);
+        }}
+        onDelete={() => {
+          if (!activeFolderId) return;
+          closeActions({ keepActive: true });
+          setShowDeletePopup(true);
+        }}
+        cText={cText}
+        cBorder={cBorder}
+        cDanger={cDanger}
+      />
 
       <FolderSheetComponent
         visible={showFolderModal}
@@ -1271,74 +1203,20 @@ useEffect(() => {
         emojiComponent={AlbumEmojiDefault}
       />
 
-      <Modal
+      <DeleteFolderModal
         visible={showDeletePopup}
-        transparent
-        animationType="fade"
-        presentationStyle="overFullScreen"
-        onRequestClose={() => setShowDeletePopup(false)}
-      >
-        <View style={StyleSheet.absoluteFill}>
-          <Pressable
-            style={[StyleSheet.absoluteFill, { backgroundColor: overlaySoft }]}
-            onPress={() => setShowDeletePopup(false)}
-          />
-
-          <View style={[styles.popupCenter, { paddingHorizontal: gutter }]}>
-            <View
-              style={[
-                styles.popupCard,
-                {
-                  backgroundColor: cBg,
-                  borderColor: hexToRgba(cPrimary, 0.35) ?? cBorder,
-                },
-              ]}
-            >
-              <View style={[styles.popupTopAccent, { backgroundColor: cPrimary }]} />
-
-              <Text style={[styles.popupTitle, { color: cText }]}>Delete folder?</Text>
-
-              <Text style={[styles.popupDesc, { color: cMuted }]}>
-                {String(activeFolderId || '') === 'selected_folder'
-                  ? 'This will hide the Selected folder tile.'
-                  : 'This will be permanently remove from your album list.'}
-              </Text>
-
-              <View style={styles.popupRow}>
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => setShowDeletePopup(false)}
-                  style={[
-                    styles.popupBtn,
-                    {
-                      borderColor: cPrimary,
-                      backgroundColor: 'transparent',
-                    },
-                  ]}
-                >
-                  <Text style={{ color: cPrimary, fontWeight: '900' }}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={doDeleteActive}
-                  style={[
-                    styles.popupBtn,
-                    {
-                      borderColor: cPrimary,
-                      backgroundColor: cPrimary,
-                    },
-                  ]}
-                >
-                  <Text style={{ color: '#fff', fontWeight: '900' }}>Delete</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={[styles.popupSoftBase, { backgroundColor: cDangerSoft }]} />
-            </View>
-          </View>
-        </View>
-      </Modal>
+        onCancel={() => setShowDeletePopup(false)}
+        onConfirm={doDeleteActive}
+        isSelectedFolder={String(activeFolderId || '') === 'selected_folder'}
+        gutter={gutter}
+        overlaySoft={overlaySoft}
+        cBg={cBg}
+        cPrimary={cPrimary}
+        cBorder={cBorder}
+        cText={cText}
+        cMuted={cMuted}
+        cDangerSoft={cDangerSoft}
+      />
 
       <ShareAccessModal
         visible={shareAccessOpen}
@@ -1364,118 +1242,6 @@ useEffect(() => {
   );
 }
 
-function FolderTile({
-  folder,
-  itemW,
-  ml,
-  mt,
-  circleSize,
-  iconSize,
-  badgeSize,
-  selectedCount,
-  onPress,
-  onOpenActions,
-  enableLongPress,
-  theme,
-  activeScale,
-}) {
-  const isSelectedFolder =
-    folder?.kind === 'selected' || String(folder?.id) === 'selected_folder';
-  const showLock = isSelectedFolder;
-
-  const badgeOffset = Math.max(6, Math.round(circleSize * 0.08));
-  const scaleStyle = activeScale ? { transform: [{ scale: activeScale }] } : null;
-
-  return (
-    <Pressable
-      style={[styles.folderItem, { width: itemW, marginLeft: ml, marginTop: mt }]}
-      onPress={onPress}
-      onLongPress={(e) => {
-        if (!enableLongPress) return;
-
-        const ne = e?.nativeEvent || {};
-        const tileLeft = (ne.pageX ?? 0) - (ne.locationX ?? 0);
-        const tileTop = (ne.pageY ?? 0) - (ne.locationY ?? 0);
-
-        onOpenActions?.({
-          folder,
-          x: tileLeft,
-          y: tileTop,
-          w: circleSize,
-          h: circleSize,
-        });
-      }}
-      delayLongPress={220}
-    >
-      <Animated.View
-        style={[{ width: circleSize, height: circleSize, position: 'relative' }, scaleStyle]}
-      >
-        <View
-          style={[
-            styles.circle,
-            {
-              width: circleSize,
-              height: circleSize,
-              borderRadius: circleSize / 2,
-              backgroundColor: theme?.cSurface,
-              overflow: 'hidden',
-              borderWidth: 0,
-              borderColor: 'transparent',
-            },
-          ]}
-        >
-          {folder.coverUrl ? (
-            <Image
-              source={{ uri: folder.coverUrl }}
-              style={{ width: circleSize, height: circleSize }}
-              resizeMode="cover"
-            />
-          ) : (
-            <FolderIcon width={iconSize} height={iconSize} />
-          )}
-        </View>
-
-        {showLock ? (
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              right: badgeOffset,
-              top: badgeOffset,
-              width: badgeSize,
-              height: badgeSize,
-              borderRadius: badgeSize / 2,
-              backgroundColor: theme?.cPrimary,
-              justifyContent: 'center',
-              alignItems: 'center',
-              zIndex: 9999,
-              elevation: 9999,
-            }}
-          >
-          <VisibleIcon2 width={badgeSize * 0.62} height={badgeSize * 0.62}  />
-          </View>
-        ) : null}
-      </Animated.View>
-
-      <Text style={[styles.folderText, { color: theme?.cMuted }]}>
-        {folder.name}
-        {isSelectedFolder ? ` (${selectedCount})` : ''}
-      </Text>
-    </Pressable>
-  );
-}
-
-function HoldAction({ Icon, label, onPress, color }) {
-  return (
-    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={styles.holdAction}>
-   <Icon width={17} height={17} color={color} style={{ marginBottom: 2 }} />
-      <Text style={{ fontSize: 10, fontWeight: '900', color, textAlign: 'center' }}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
@@ -1496,71 +1262,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  holdBarWrap: {
-    position: 'absolute',
-    borderRadius: 12,
-    overflow: 'hidden',
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 22,
-  },
-  holdRow: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-  },
-  holdAction: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 1 },
-  holdDivider: { width: 1, height: 28, opacity: 0.95 },
-
-  popupCenter: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  popupCard: {
-    width: '100%',
-    maxWidth: 420,
-    borderRadius: 18,
-    borderWidth: 1,
-    overflow: 'hidden',
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 24,
-  },
-  popupTopAccent: { height: 5, width: '100%' },
-  popupTitle: {
-    paddingTop: 14,
-    paddingHorizontal: 16,
-    fontSize: 15,
-    fontWeight: '900',
-  },
-  popupDesc: {
-    paddingTop: 6,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  popupRow: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingBottom: 14,
-  },
-  popupBtn: {
-    flex: 1,
-    height: 42,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  popupSoftBase: {
-    height: 10,
-    width: '100%',
-  },
 });

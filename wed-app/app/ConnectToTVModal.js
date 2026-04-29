@@ -1,6 +1,5 @@
 import PrimaryButton from '@/components/PrimaryButton';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ConnectionSuccessModal from './ConnectionSuccessModal';
@@ -20,12 +19,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_URL } from '../utils/api';
+import { getAuthToken } from '../utils/authToken';
 
-const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
 const clamp = (v, min, max) => Math.max(min, Math.min(v, max));
 
 async function confirmPairing(pairingId, weddingId) {
-  const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+  const token = await getAuthToken();
   const res = await fetch(`${API_URL}/tv/pair/confirm`, {
     method: 'POST',
     headers: {

@@ -1,10 +1,9 @@
 import { Router, Response } from 'express';
 import { Album } from '../models/Album';
-import { Photo } from '../models/Photo';
-import { buildSignedReadUrl, deleteS3Object } from '../config/s3';
 import { authRequired, AuthRequest } from '../middleware/auth';
 import { loadOwnedWedding } from '../utils/ownership';
 import { isValidObjectId } from '../utils/helpers';
+import { hardDeleteAlbum, listAlbumsWithCovers } from '../services/albumService';
 
 const router = Router();
 
@@ -23,62 +22,12 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const weddingId = String(req.query?.weddingId || '').trim();
     if (!weddingId) return res.status(400).json({ error: 'weddingId is required' });
 
-    // One aggregation instead of one Photo.findOne + one Photo.countDocuments
-    // per album. The Photos compound index `(albumId, createdAt -1, _id -1)`
-    // already exists, so the $lookup that pulls the most-recent photo per
-    // album walks that index.
-    const albums = await Album.aggregate([
-      { $match: { weddingId, hidden: { $ne: true }, deletedByUser: { $ne: true } } },
-      { $sort: { createdAt: 1 } },
-      { $limit: 200 },
-      {
-        $lookup: {
-          from: Photo.collection.name,
-          let: { aid: '$_id' },
-          pipeline: [
-            { $match: { $expr: { $eq: ['$albumId', '$$aid'] } } },
-            { $sort: { createdAt: -1, _id: -1 } },
-            { $limit: 1 },
-            { $project: { image_url: 1 } },
-          ],
-          as: 'cover',
-        },
-      },
-      {
-        $lookup: {
-          from: Photo.collection.name,
-          let: { aid: '$_id' },
-          pipeline: [
-            { $match: { $expr: { $eq: ['$albumId', '$$aid'] } } },
-            { $count: 'n' },
-          ],
-          as: 'countAgg',
-        },
-      },
-      {
-        $addFields: {
-          coverImageUrl: { $ifNull: [{ $arrayElemAt: ['$cover.image_url', 0] }, null] },
-          photoCount: { $ifNull: [{ $arrayElemAt: ['$countAgg.n', 0] }, 0] },
-        },
-      },
-      { $project: { cover: 0, countAgg: 0 } },
-    ]);
+    const own = await loadOwnedWedding(req.user!.id, { weddingId });
+    if (!own.ok) return res.status(own.status).json({ error: own.error });
 
-    // Sign cover URLs in parallel — kept outside the aggregation since the
-    // signing path is application-side.
-    const albumsWithCovers = await Promise.all(
-      albums.map(async (album: any) => {
-        let coverUrl: string | null = null;
-        const key = album.coverImageUrl;
-        if (key) {
-          try { coverUrl = await buildSignedReadUrl(String(key)); } catch {}
-        }
-        const { coverImageUrl: _drop, ...rest } = album;
-        return { ...rest, coverUrl };
-      })
-    );
-
-    res.json({ data: albumsWithCovers });
+    // Aggregation + batch signing lives in services/albumService.ts.
+    const data = await listAlbumsWithCovers(weddingId);
+    res.json({ data });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
@@ -199,23 +148,11 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
       return res.json({ success: true, softDeleted: true, message: 'Album hidden successfully.', album: hidden, freedBytes: 0 });
     }
 
-    // Hard delete — also remove the underlying S3 objects so storage doesn't
-    // leak. Settle-all so a single missing object doesn't kill the loop.
-    const photos = await Photo.find({ albumId: album._id }).select('size_bytes image_url').lean();
-    let freedBytes = 0;
-    for (const p of photos) freedBytes += Number(p.size_bytes || 0);
+    // Hard delete — S3 cleanup + photo / album removal lives in
+    // services/albumService.ts.
+    const { deletedPhotos, freedBytes } = await hardDeleteAlbum(album._id);
 
-    await Promise.allSettled(
-      photos
-        .map((p) => String(p.image_url || '').trim())
-        .filter(Boolean)
-        .map((key) => deleteS3Object(key))
-    );
-
-    await Photo.deleteMany({ albumId: album._id });
-    await Album.findByIdAndDelete(album._id);
-
-    res.json({ success: true, softDeleted: false, deletedAlbumId: album._id, deletedPhotos: photos.length, freedBytes, message: 'Album deleted successfully.' });
+    res.json({ success: true, softDeleted: false, deletedAlbumId: album._id, deletedPhotos, freedBytes, message: 'Album deleted successfully.' });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
