@@ -38,7 +38,7 @@ router.post('/send-otp', async (req: Request, res: Response) => {
     if (!isValidPhone(contact_no)) return res.status(400).json({ error: 'contact_no must be exactly 10 digits' });
 
     const contactNumber = String(contact_no).trim();
-    const canRequest = canRequestNewOtp(contactNumber);
+    const canRequest = await canRequestNewOtp(contactNumber);
     if (!canRequest.allowed) return res.status(400).json({ error: `Please wait ${canRequest.waitSeconds}s before requesting a new OTP` });
 
     let user = await User.findOne({ contact_no: contactNumber });
@@ -56,11 +56,9 @@ router.post('/send-otp', async (req: Request, res: Response) => {
     }
 
     const otp = generateOtp();
-    setOtpRecord(contactNumber, otp);
-    console.log(`OTP for ${contactNumber}: ${otp}`);
+    await setOtpRecord(contactNumber, otp);
 
     try {
-      console.log("Helloo");
       await axios.post('https://control.msg91.com/api/v5/otp', null, {
         params: {
           template_id: env.MSG91_TEMPLATE_ID,
@@ -89,7 +87,7 @@ router.post('/verify-otp', async (req: Request, res: Response) => {
     const user = await User.findOne({ contact_no: contactNumber });
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const otpResult = verifyOtp(contactNumber, String(otp));
+    const otpResult = await verifyOtp(contactNumber, String(otp));
     if (!otpResult.success) return res.status(400).json({ error: otpResult.error });
 
     await User.findByIdAndUpdate(user._id, { confirmed: true });

@@ -8,6 +8,7 @@ import { ShareLink } from '../models/ShareLink';
 import { Album } from '../models/Album';
 import { Wedding } from '../models/Wedding';
 import { Photo } from '../models/Photo';
+import { PasscodeAttempt } from '../models/PasscodeAttempt';
 import { escapeHtml } from '../utils/helpers';
 import { authRequired } from '../middleware/auth';
 
@@ -100,30 +101,35 @@ function verifyPhotoJwt(token: string): any {
   return d;
 }
 
-// ─── Passcode rate limiter (in-memory) ───────────────────────────────────────
-// Limits brute-force attempts against passcode-protected links.
-// Two parallel counters:
-//   • per-slug   (PASSCODE_LIMIT = 10 / PASSCODE_WINDOW_MS = 2 min) — narrow,
-//     so a leaked URL can be tried at most 10 times per window.
-//   • per-IP     (PASSCODE_IP_LIMIT = 30 / PASSCODE_WINDOW_MS) — broader cap
-//     so an attacker can't roll through different slugs / tokens to amplify.
-//   Resets per (key, window) pair.
+// ─── Passcode rate limiter (Mongo, TTL-backed) ───────────────────────────────
+// Limits brute-force attempts against passcode-protected links. Backed by the
+// PasscodeAttempt collection with a TTL on `resetAt` so windows expire on
+// their own. Survives restarts and works across multiple app instances.
 
-const passcodeAttempts = new Map<string, { count: number; resetAt: number }>();
 const PASSCODE_LIMIT = 10;
 const PASSCODE_IP_LIMIT = 30;
 const PASSCODE_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
 
-function bumpAttempts(key: string, max: number): boolean {
+async function checkPasscodeRateLimit(slug: string): Promise<boolean> {
   const now = Date.now();
-  const entry = passcodeAttempts.get(key);
-  if (!entry || entry.resetAt < now) {
-    passcodeAttempts.set(key, { count: 1, resetAt: now + PASSCODE_WINDOW_MS });
-    return true;
-  }
-  if (entry.count >= max) return false;
-  entry.count++;
-  return true;
+  const newReset = new Date(now + PASSCODE_WINDOW_MS);
+
+  // Reset the window if the existing row's resetAt is in the past — atomic
+  // upsert keyed on (slug, resetAt < now) followed by an unconditional $inc.
+  await PasscodeAttempt.updateOne(
+    { slug, resetAt: { $lt: new Date(now) } },
+    { $set: { count: 0, resetAt: newReset } }
+  );
+  const updated = await PasscodeAttempt.findOneAndUpdate(
+    { slug },
+    {
+      $inc: { count: 1 },
+      $setOnInsert: { resetAt: newReset },
+    },
+    { upsert: true, new: true }
+  );
+
+  return updated.count <= PASSCODE_LIMIT;
 }
 
 function clientIp(req: Request): string {
@@ -406,6 +412,9 @@ router.post('/resolve/:slug', async (req: Request, res: Response) => {
     if (isExpired(link.expiresAt)) return res.status(403).json({ error: 'Link expired' });
 
     if (link.requiresPasscode) {
+      if (!(await checkPasscodeRateLimit(slug))) {
+        return res.status(429).json({ error: 'Too many passcode attempts, try again later' });
+      }
       const p = String(req.body?.passcode ?? '').trim();
       if (!p) {
         // Return non-sensitive wedding preview so the app can render
@@ -514,6 +523,9 @@ router.get('/photos', async (req: Request, res: Response) => {
 
       // Passcode check applies to all paths, not just /resolve
       if (link.requiresPasscode) {
+        if (!(await checkPasscodeRateLimit(slug))) {
+          return res.status(429).json({ error: 'Too many attempts, try again later' });
+        }
         const p = String((req.query?.passcode as string) || '').trim();
         if (!p) return res.status(401).json({ error: 'Passcode required' });
         if (!(await bcrypt.compare(p, String(link.passcodeHash || '')))) {
