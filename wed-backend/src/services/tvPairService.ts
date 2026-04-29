@@ -6,6 +6,11 @@ import { TvPairSession } from '../models/TvPairSession';
 function addMinutes(date: Date, minutes: number) { return new Date(date.getTime() + minutes * 60 * 1000); }
 function isExpired(d?: Date | null) { return !d || new Date(d).getTime() <= Date.now(); }
 
+// Last 6 hex chars of the UUID, uppercased — keeps the previous human-typed
+// pairing code stable while letting us index it.
+function shortCodeFromPairingId(pairingId: string): string {
+  return pairingId.replace(/-/g, '').slice(-6).toUpperCase();
+}
 // TV app heartbeats every ~20s; allow ~4 missed beats before declaring the
 // session dead. Anything below the heartbeat cadence will flap PAIRED
 // sessions to DISCONNECTED almost immediately.
@@ -17,7 +22,10 @@ export async function startPairing({ shareType = 'family' }: { shareType?: strin
   const expiresAt = addMinutes(new Date(), ttlMin);
 
   await TvPairSession.create({
-    pairingId, status: 'WAITING', expiresAt,
+    pairingId,
+    shortCode: shortCodeFromPairingId(pairingId),
+    status: 'WAITING',
+    expiresAt,
     shareType: shareType === 'photographer' ? 'photographer' : 'family',
   });
 
@@ -49,12 +57,12 @@ export async function confirmPairing({ pairingId, weddingId, userId }: { pairing
   // Try exact UUID match first
   let row = await TvPairSession.findOne({ pairingId }).lean();
 
-  // Fallback: mobile enters XX-XX-XX (6 chars with dashes) → match against last 6 chars of UUID
+  // Fallback: mobile enters XX-XX-XX (6 chars). Look the row up by the
+  // indexed `shortCode` column instead of scanning every WAITING session.
   if (!row) {
     const shortCode = pairingId.replace(/-/g, '').toUpperCase();
     if (shortCode.length === 6) {
-      const pending = await TvPairSession.find({ status: 'WAITING' }).lean();
-      const matched = pending.find(s => s.pairingId.replace(/-/g, '').slice(-6).toUpperCase() === shortCode);
+      const matched = await TvPairSession.findOne({ shortCode, status: 'WAITING' }).lean();
       if (matched) { row = matched; pairingId = matched.pairingId; }
     }
   }
