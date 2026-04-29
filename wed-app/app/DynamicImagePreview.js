@@ -8,7 +8,6 @@ import {
   Animated,
   FlatList,
   Image,
-  Modal,
   PanResponder,
   Pressable,
   StatusBar,
@@ -18,20 +17,18 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Reanimated, {
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
 import Colors from "@/theme/colors";
+import FixedSidePeeks from "../components/FixedSidePeeks";
+import ImageDeleteConfirmModal from "../components/ImageDeleteConfirmModal";
+import PreviewBottomAction from "../components/PreviewBottomAction";
+import ZoomableImage from "../components/ZoomableImage";
 import { useImages } from "../context/ImagesContext";
+import { previewStyles as styles } from "../styles/dynamicImagePreview";
 import { API_URL } from "../utils/api";
 
 import BackIcon from "../assets/images/Back icon.svg";
@@ -155,193 +152,6 @@ const formatHeaderDateFromImage = (img) => {
   return d ? formatDdMmYyyyWeekday(d) : "";
 };
 
-function BottomAction({ Icon, label, onPress, iconSize, colors, boxW, boxH }) {
-  const textSize = clamp(iconSize * 0.42, 10, 12);
-
-  return (
-    <TouchableOpacity
-      style={[styles.actionBtn, { width: boxW, height: boxH }]}
-      onPress={onPress}
-      activeOpacity={0.85}
-    >
-      <Icon width={iconSize} height={iconSize} fill={colors?.icon} />
-      <Text
-        style={[styles.actionText, { color: colors?.text, fontSize: textSize }]}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
-/**
- * ✅ Side peeks (fixed, never move), true clipping
- */
-function FixedSidePeeks({ W, peek, gap, prevUri, nextUri, bg }) {
-  const full = { position: "absolute", top: 0, bottom: 0, width: W };
-
-  return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-      {!!prevUri && (
-        <View
-          style={{
-            position: "absolute",
-            top: 0,
-            bottom: 0,
-            left: 0,
-            width: peek,
-            overflow: "hidden",
-          }}
-        >
-          <Image
-            source={{ uri: prevUri }}
-            resizeMode="contain"
-            style={[full, { left: -(W - peek) }]}
-          />
-        </View>
-      )}
-
-      {!!nextUri && (
-        <View
-          style={{
-            position: "absolute",
-            top: 0,
-            bottom: 0,
-            right: 0,
-            width: peek,
-            overflow: "hidden",
-          }}
-        >
-          <Image
-            source={{ uri: nextUri }}
-            resizeMode="contain"
-            style={[full, { left: 0 }]}
-          />
-        </View>
-      )}
-
-      <View
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          top: 0,
-          bottom: 0,
-          left: peek,
-          width: gap,
-          backgroundColor: bg,
-        }}
-      />
-      <View
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          top: 0,
-          bottom: 0,
-          right: peek,
-          width: gap,
-          backgroundColor: bg,
-        }}
-      />
-    </View>
-  );
-}
-
-// ✅ NEW: theme helper (same as DynamicGallery)
-const themePrimary = () => Colors?.primary ?? Colors?.primaryPink ?? "#E85A70";
-
-function ZoomableImage({ uri, imgRadius, imageBg, onZoomChange }) {
-  const scale = useSharedValue(1);
-  const savedScale = useSharedValue(1);
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const savedTranslateX = useSharedValue(0);
-  const savedTranslateY = useSharedValue(0);
-
-  const onZoomChangeRef = useRef(onZoomChange);
-  onZoomChangeRef.current = onZoomChange;
-
-  const allGestures = useMemo(() => {
-    const pinch = Gesture.Pinch()
-      .onUpdate((e) => {
-        scale.value = Math.max(1, Math.min(savedScale.value * e.scale, 5));
-      })
-      .onEnd(() => {
-        if (scale.value < 1.05) {
-          scale.value = withSpring(1);
-          savedScale.value = 1;
-          translateX.value = withSpring(0);
-          translateY.value = withSpring(0);
-          savedTranslateX.value = 0;
-          savedTranslateY.value = 0;
-          runOnJS(onZoomChangeRef.current)(false);
-        } else {
-          savedScale.value = scale.value;
-          runOnJS(onZoomChangeRef.current)(true);
-        }
-      });
-
-    const pan = Gesture.Pan()
-      .averageTouches(true)
-      .minPointers(2)
-      .onUpdate((e) => {
-        if (savedScale.value > 1) {
-          translateX.value = savedTranslateX.value + e.translationX;
-          translateY.value = savedTranslateY.value + e.translationY;
-        }
-      })
-      .onEnd(() => {
-        savedTranslateX.value = translateX.value;
-        savedTranslateY.value = translateY.value;
-      });
-
-    const doubleTap = Gesture.Tap()
-      .numberOfTaps(2)
-      .onEnd(() => {
-        scale.value = withSpring(1);
-        savedScale.value = 1;
-        translateX.value = withSpring(0);
-        translateY.value = withSpring(0);
-        savedTranslateX.value = 0;
-        savedTranslateY.value = 0;
-        runOnJS(onZoomChangeRef.current)(false);
-      });
-
-    // Simultaneous: pinch (2-finger) and doubleTap (1-finger) can't physically
-    // conflict, so no Exclusive blocking needed.
-    return Gesture.Simultaneous(
-      Gesture.Simultaneous(pinch, pan),
-      doubleTap,
-    );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      { scale: scale.value },
-    ],
-  }));
-
-  return (
-    <GestureDetector gesture={allGestures}>
-      <View
-        style={[
-          styles.imageClip,
-          { borderRadius: imgRadius, backgroundColor: imageBg },
-        ]}
-      >
-        <Reanimated.View style={[StyleSheet.absoluteFill, animStyle]}>
-          <Image
-            source={uri ? { uri } : undefined}
-            resizeMode="contain"
-            style={{ width: "100%", height: "100%" }}
-          />
-        </Reanimated.View>
-      </View>
-    </GestureDetector>
-  );
-}
 
 export default function DynamicImagePreview() {
   const router = useRouter();
@@ -1388,7 +1198,7 @@ export default function DynamicImagePreview() {
             justifyContent: "center",
           }}
         >
-          <BottomAction
+          <PreviewBottomAction
             Icon={ShareIcon}
             label="Share"
             onPress={onShare}
@@ -1401,7 +1211,7 @@ export default function DynamicImagePreview() {
           {!isGuest && (
             <>
               <View style={{ width: ACTION_GAP }} />
-              <BottomAction
+              <PreviewBottomAction
                 Icon={DeleteIcon}
                 label="Delete"
                 onPress={onDelete}
@@ -1416,289 +1226,19 @@ export default function DynamicImagePreview() {
       </View>
 
       {/* ✅ Delete confirm */}
-      <Modal
+      <ImageDeleteConfirmModal
         visible={confirmDeleteOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setConfirmDeleteOpen(false)}
-      >
-        <Pressable
-          style={[
-            confirmStyles.overlay,
-            { backgroundColor: "rgba(0,0,0,0.55)" },
-          ]}
-          onPress={() => setConfirmDeleteOpen(false)}
-        >
-          <Pressable
-            onPress={() => {}}
-            style={[
-              confirmStyles.confirmCard,
-              {
-                width: Math.min(W - 48, 320),
-                borderRadius: 18,
-                backgroundColor: Colors?.background ?? "#fff",
-              },
-            ]}
-          >
-            <BlurView
-              tint="light"
-              intensity={28}
-              style={StyleSheet.absoluteFill}
-            />
-            <View
-              pointerEvents="none"
-              style={[
-                StyleSheet.absoluteFill,
-                { backgroundColor: "#FFFFFFC4" },
-              ]}
-            />
-
-            <Text style={[confirmStyles.confirmTitle, { color: cText }]}>
-              Delete Image
-            </Text>
-            <Text style={[confirmStyles.confirmBody, { color: cMuted }]}>
-              Are you sure you want to delete this image?
-            </Text>
-
-            <View style={confirmStyles.confirmRow}>
-              <TouchableOpacity
-                onPress={() => setConfirmDeleteOpen(false)}
-                activeOpacity={0.85}
-                style={confirmStyles.confirmBtn}
-              >
-                <Text
-                  style={[
-                    confirmStyles.confirmBtnText,
-                    { color: themePrimary() },
-                  ]}
-                >
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={async () => {
-                  setConfirmDeleteOpen(false);
-                  await doDelete();
-                }}
-                activeOpacity={0.85}
-                style={confirmStyles.confirmBtn}
-              >
-                <Text
-                  style={[
-                    confirmStyles.confirmBtnText,
-                    { color: themePrimary() },
-                  ]}
-                >
-                  Delete
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        onCancel={() => setConfirmDeleteOpen(false)}
+        onConfirm={async () => {
+          setConfirmDeleteOpen(false);
+          await doDelete();
+        }}
+        width={Math.min(W - 48, 320)}
+        cText={cText}
+        cMuted={cMuted}
+      />
     </SafeAreaView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-
-  header: { flexDirection: "row", alignItems: "center", backgroundColor:"#FFFFFF" },
-  headerBtn: { alignItems: "center", justifyContent: "center" },
-  headerCenter: { flex: 1, alignItems: "center" },
-
-  title: { fontWeight: "800" },
-  subtitle: { marginTop: 3, fontWeight: "600" },
-
-  body: { flex: 1, justifyContent: "center", paddingTop: 12 },
-
-  card: {
-    overflow: "hidden",
-  },
-
-  imageClip: { flex: 1, overflow: "hidden" },
-  imageFill: { width: "100%", height: "100%" },
-
-  emptyWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-
-  hintCol: {
-    position: "absolute",
-    left: 14,
-    right: 14,
-    bottom: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  hintText: {
-    marginTop: 4,
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 12,
-    textAlign: "center",
-    textShadowColor: "rgba(0,0,0,0.5)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-
-  heartWrap: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    zIndex: 10,
-    elevation: 10,
-  },
-
-  freezeWrap: { ...StyleSheet.absoluteFillObject, zIndex: 55, elevation: 55 },
-
-  centerStageWrap: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 60,
-    elevation: 60,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  bottomBar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: "center",
-  },
-  blurFreezeWrap: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 58,
-    elevation: 58,
-  },
-
-  blurGlassOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255,255,255,0.10)",
-  },
-  actionBtn: {
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 6,
-  },
-  actionText: { marginTop: 3, fontWeight: "700" },
-
-  // Clip container for the Selected path (hides the strip below bottom edge)
-  selectedPathClip: {
-    position: "absolute",
-    left: "50%",
-    marginLeft: -24,
-    width: 48,
-    overflow: "hidden",
-    zIndex: 95,
-    elevation: 95,
-  },
-  // Vertical "Selected" path (inside clip container)
-  selectedPathWrap: {
-    width: 48,
-    height: "100%",
-    alignItems: "center",
-    justifyContent: "flex-start",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
-    backgroundColor: "rgba(232, 90, 112, 0.12)",
-  },
-  selectedPathTop: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(232, 90, 112, 0.25)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
-  },
-  selectedPathBody: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: 8,
-  },
-  selectedPathText: {
-    color: "#E85A70",
-    fontWeight: "900",
-    fontSize: 13,
-    letterSpacing: 1,
-    width: 100,
-    textAlign: "center",
-    transform: [{ rotate: "-90deg" }],
-  },
-
-  // "Selected Folder" icon (bottom-right during swipe)
-  selectedFolderWrap: {
-    position: "absolute",
-    right: 20,
-    alignItems: "center",
-    zIndex: 95,
-    elevation: 95,
-  },
-  selectedFolderIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
-    backgroundColor: "#E85A70",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  selectedFolderLabel: {
-    color: "#E85A70",
-    fontWeight: "700",
-    fontSize: 10,
-    marginTop: 4,
-    textAlign: "center",
-  },
-
-  // "Saved to Selected" pink pill toast (bottom-center of image)
-  savedToast: {
-    position: "absolute",
-    bottom: 16,
-    alignSelf: "center",
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    zIndex: 100,
-    elevation: 100,
-  },
-  savedToastText: {
-    backgroundColor: "#E85A70",
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 13,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 24,
-    overflow: "hidden",
-  },
-});
-
-const confirmStyles = StyleSheet.create({
-  overlay: { flex: 1, justifyContent: "center", alignItems: "center" },
-
-  confirmCard: {
-    overflow: "hidden",
-    backgroundColor: "#fff",
-    padding: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 18,
-  },
-  confirmTitle: { fontWeight: "900", fontSize: 16 },
-  confirmBody: { marginTop: 8, fontSize: 13, fontWeight: "600" },
-  confirmRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginTop: 14,
-  },
-  confirmBtn: { paddingVertical: 10, paddingHorizontal: 12 },
-  confirmBtnText: { fontWeight: "900", fontSize: 14 },
-});

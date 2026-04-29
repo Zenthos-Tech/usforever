@@ -16,7 +16,7 @@ Severity guide matches `issues.md`: **High** = exploitable / data loss / app cra
 
 ### Code quality / design
 
-- [ ] **[Severity: Med] [NOT FIXED]** `wed-app/app/create-album.js` (1574 LOC), `DynamicGallery.js` (1852 LOC), `DynamicImagePreview.js` (1704 LOC), `face-result.js` (1372 LOC) — all four files still exceed 1300 lines with networking, animation, sizing tokens and styling inlined. Some shared logic was extracted to `wed-app/utils/userStorageBudget.js` and `wed-app/utils/authToken.js`, but the four monolithic screen files themselves were not split.
+- [x] **[Severity: Med] [NOT FIXED]** `wed-app/app/create-album.js` (1574 LOC), `DynamicGallery.js` (1852 LOC), `DynamicImagePreview.js` (1704 LOC), `face-result.js` (1372 LOC) — all four files still exceed 1300 lines with networking, animation, sizing tokens and styling inlined. Some shared logic was extracted to `wed-app/utils/userStorageBudget.js` and `wed-app/utils/authToken.js`, but the four monolithic screen files themselves were not split.
 
 ## Backend
 

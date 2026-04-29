@@ -1,6 +1,5 @@
 
 
-import { BlurView } from 'expo-blur';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -11,7 +10,6 @@ import {
   Alert,
   FlatList,
   Image,
-  Modal,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -29,10 +27,21 @@ import { useImages } from '../context/ImagesContext';
 import { useWedding } from '../context/WeddingContext';
 
 import PlusIcon from '../assets/images/UPLOADIMAGES.svg'; // or correct path
+import BulkDeleteConfirmModal from '../components/BulkDeleteConfirmModal';
+import DynamicImageHoldModal from '../components/DynamicImageHoldModal';
 import { useTvConnection } from '../hooks/useTvConnection';
 import { API_URL } from '../utils/api';
-import { getAuthToken } from '../utils/authToken';
+import { apiFetch, rawFetchAbsolute } from '../utils/galleryApi';
+import {
+  ensureLocalFileUri,
+  guessMime,
+  isContentUri,
+  isFileUri,
+  isHttpUri,
+  safeNameFromUrl,
+} from '../utils/photoUri';
 import { consumeBytes, refundBytes } from '../utils/userStorageBudget';
+import { BAR_BG, galleryStyles as styles } from '../styles/dynamicGallery';
 import ConnectToTVModal from './ConnectToTVModal';
 import ConnectionSuccessModal from './ConnectionSuccessModal';
 // ✅ SVG icons
@@ -58,49 +67,6 @@ const readSizeBytesFromItem = (item) => {
   const b = Number(item?.sizeBytes ?? item?.size_bytes ?? 0) || 0;
   return clamp0(b);
 };
-
-function getApiBase() {
-  const base = String(API_URL || '').replace(/\/+$/, '');
-  if (!base) throw new Error('Missing API_URL');
-  if (base.endsWith('/api')) return base;
-  return `${base}/api`;
-}
-
-async function apiFetch(path, options = {}) {
-  const baseApi = getApiBase();
-  const p = String(path || '').startsWith('/') ? String(path) : `/${String(path)}`;
-  const url = `${baseApi}${p}`;
-
-  const token = await getAuthToken();
-  const headers = {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(options.headers || {}),
-  };
-
-  const res = await fetch(url, { ...options, headers });
-  const raw = await res.text();
-
-  let json = null;
-  try {
-    json = raw ? JSON.parse(raw) : null;
-  } catch {
-    json = null;
-  }
-
-  if (!res.ok) return { ok: false, url, status: res.status, body: json ?? raw };
-  return { ok: true, url, status: res.status, json: json ?? raw };
-}
-
-async function rawFetchAbsolute(url, options) {
-  const res = await fetch(url, options);
-  const raw = await res.text();
-  let json = null;
-  try {
-    json = raw ? JSON.parse(raw) : null;
-  } catch {}
-  if (!res.ok) return { ok: false, url, status: res.status, body: json ?? raw };
-  return { ok: true, url, status: res.status, json: json ?? raw };
-}
 
 function getExtFromUri(uri) {
   const clean = String(uri || '').split('?')[0];
@@ -129,9 +95,6 @@ async function uriToBlob(uri) {
 // =========================
 // ✅ Preview-style share helpers
 // =========================
-const isHttpUri = (u) => typeof u === 'string' && /^https?:\/\//i.test(u);
-const isFileUri = (u) => typeof u === 'string' && /^file:\/\//i.test(u);
-const isContentUri = (u) => typeof u === 'string' && /^content:\/\//i.test(u);
 
 const joinUrl = (base, path) => {
   const b = String(base || '').replace(/\/+$/, '');
@@ -157,67 +120,7 @@ const resolveDisplayUri = (raw) => {
   if (isHttpUri(u) || isFileUri(u) || isContentUri(u) || u.includes('://')) return u;
   return joinUrl(API_URL, u);
 };
-
-const safeNameFromUrl = (url) => {
-  const noQuery = (url || '').split('?')[0];
-  const last = noQuery.split('/').pop() || `photo_${Date.now()}.jpg`;
-  const clean = last.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const hasExt = /\.[a-zA-Z0-9]+$/.test(clean);
-  return hasExt ? clean : `${clean}.jpg`;
-};
-
-const guessMime = (nameOrUrl) => {
-  const s = String(nameOrUrl || '').toLowerCase();
-  if (s.endsWith('.png')) return 'image/png';
-  if (s.endsWith('.webp')) return 'image/webp';
-  if (s.endsWith('.heic') || s.endsWith('.heif')) return 'image/heic';
-  if (s.endsWith('.mp4')) return 'video/mp4';
-  if (s.endsWith('.mov')) return 'video/quicktime';
-  if (s.endsWith('.m4v')) return 'video/x-m4v';
-  return 'image/jpeg';
-};
-
-const ensureLocalFileUri = async (inputUri) => {
-  const u = String(inputUri || '').trim();
-  if (!u) throw new Error('Missing image url');
-
-  if (isFileUri(u)) return u;
-
-  const baseDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
-  if (!baseDir) throw new Error('No cache directory');
-
-  if (isHttpUri(u)) {
-    const fileName = safeNameFromUrl(u);
-    const localPath = baseDir + fileName;
-    await FileSystem.deleteAsync(localPath, { idempotent: true }).catch(() => {});
-    const res = await FileSystem.downloadAsync(u, localPath);
-    return res?.uri || localPath;
-  }
-
-  if (isContentUri(u)) {
-    const fileName = `share_${Date.now()}.jpg`;
-    const localPath = baseDir + fileName;
-    await FileSystem.deleteAsync(localPath, { idempotent: true }).catch(() => {});
-    await FileSystem.copyAsync({ from: u, to: localPath });
-    return localPath;
-  }
-
-  const localPath = baseDir + `share_${Date.now()}.jpg`;
-  await FileSystem.deleteAsync(localPath, { idempotent: true }).catch(() => {});
-  await FileSystem.copyAsync({ from: u, to: localPath });
-  return localPath;
-};
 // =========================
-
-const holdGlassBoxStyle = () => ({
-  backgroundColor: '#FFFFFFC4',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.55)',
-});
-
-const BAR_BG = '#FFFFFFBD';
-const themePrimary = () => Colors?.primary ?? Colors?.primaryPink ?? '#E85A70';
-const HEART_RED = '#E53935';
 
 function SvgIcon({ Icon, size, tint }) {
   return (
@@ -231,255 +134,6 @@ function SvgIcon({ Icon, size, tint }) {
   );
 }
 
-function Action({ icon, label, onPress, textSize, danger }) {
-  return (
-    <TouchableOpacity style={modalStyles.actionItem} onPress={onPress} activeOpacity={0.85}>
-      {icon}
-      <Text
-        style={[
-          modalStyles.actionText,
-          {
-            fontSize: textSize,
-            color: danger ? (Colors?.danger ?? '#c00') : (Colors?.textSecondary ?? '#666'),
-          },
-        ]}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
-function DynamicImageHoldModal({
-  visible,
-  image,
-  onClose,
-  canShare,
-  canDelete,
-  canFavourite = true,
-  onToggleFavourite,
-  isFavourited,
-}) {
-  const { width: W, height: H } = useWindowDimensions();
-  const short = Math.min(W, H);
-  const gutter = useMemo(() => clamp(short * 0.06, 14, 24), [short]);
-
-  const cardW = useMemo(() => clamp(W - gutter * 3.4, 220, 300), [W, gutter]);
-
-  const radius = 16;
-
-  const imgBoxH = useMemo(() => clamp(H * 0.38, 200, H * 0.44), [H]);
-  const actionsBoxH = useMemo(() => clamp(H * 0.075, 50, 70), [H]);
-  const gap = useMemo(() => clamp(gutter * 0.25, 6, 10), [gutter]);
-
-  const icon = useMemo(() => clamp(W * 0.06, 20, 26), [W]);
-  const text = useMemo(() => clamp(W * 0.022, 8, 10), [W]);
-
-  const [measured, setMeasured] = useState({ w: 1, h: 1 });
-
-  React.useEffect(() => {
-    if (!visible || !image?.uri) return;
-
-    let alive = true;
-    Image.getSize(
-      image.uri,
-      (w, h) => {
-        if (!alive) return;
-        setMeasured({ w: Math.max(1, w), h: Math.max(1, h) });
-      },
-      () => {
-        if (!alive) return;
-        setMeasured({ w: 1, h: 1 });
-      }
-    );
-
-    return () => {
-      alive = false;
-    };
-  }, [visible, image?.uri]);
-
-  const fitted = useMemo(() => {
-    const mw = Math.max(1, Number(measured.w || 1));
-    const mh = Math.max(1, Number(measured.h || 1));
-    const scale = Math.min(cardW / mw, imgBoxH / mh);
-    return {
-      w: Math.max(1, Math.floor(mw * scale)),
-      h: Math.max(1, Math.floor(mh * scale)),
-    };
-  }, [measured, cardW, imgBoxH]);
-
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-
-  if (!visible || !image) return null;
-
-  const handleShare = async () => {
-    if (!canShare) return;
-    try {
-      const available = await Sharing.isAvailableAsync();
-      if (!available) {
-        Alert.alert('Sharing not available', 'Sharing is not available on this device.');
-        return;
-      }
-
-      const fileUri = await ensureLocalFileUri(image.uri);
-      const mimeType = guessMime(fileUri);
-      await Sharing.shareAsync(fileUri, { mimeType, dialogTitle: 'Share photo' });
-    } catch (e) {
-      console.log('Share error:', e);
-      Alert.alert('Share failed', String(e?.message || e || 'Could not share this photo.'));
-    }
-  };
-
-  const requestDelete = () => {
-    if (!canDelete) return;
-    setConfirmDeleteOpen(true);
-  };
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={() => onClose?.({ action: 'close' })}
-    >
-      <Pressable
-        style={[modalStyles.overlay, { backgroundColor: 'rgba(0,0,0,0.55)' }]}
-        onPress={() => {
-          setConfirmDeleteOpen(false);
-          onClose?.({ action: 'close' });
-        }}
-      >
-        <Pressable style={{ width: cardW, alignItems: 'center' }} onPress={() => {}}>
-          <View style={{ width: cardW, alignItems: 'center' }}>
-            <View style={{ width: cardW, alignItems: 'center' }}>
-              <View
-                style={[
-                  modalStyles.imageShadow,
-                  {
-                    width: cardW,
-                    height: imgBoxH,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: 'transparent',
-                    borderRadius: radius,
-                  },
-                ]}
-              >
-                <Image
-                  source={{ uri: image.uri }}
-                  resizeMode="contain"
-                  style={{
-                    width: fitted.w,
-                    height: fitted.h,
-                    borderRadius: radius,
-                    backgroundColor: 'transparent',
-                  }}
-                />
-              </View>
-            </View>
-
-            <View style={{ height: gap }} />
-
-            <View
-              style={[
-                modalStyles.box,
-                {
-                  width: cardW * 0.88,
-                  height: actionsBoxH,
-                  borderRadius: radius,
-                  overflow: 'hidden',
-                },
-                holdGlassBoxStyle(),
-              ]}
-            >
-              <View style={modalStyles.actionBar}>
-                {canShare ? (
-                  <Action
-                    label="Share"
-                    onPress={handleShare}
-                    icon={<SvgIcon Icon={ShareIconSvg} size={icon} tint={Colors?.textPrimary ?? '#111'} />}
-                    textSize={text}
-                  />
-                ) : null}
-
-                {canFavourite ? (
-                  <Action
-                    label="Favourite"
-                    onPress={() => onToggleFavourite?.(image)}
-                    icon={
-                      <SvgIcon
-                        Icon={FavouriteIconSvg}
-                        size={icon}
-                        tint={isFavourited ? HEART_RED : (Colors?.textPrimary ?? '#111')}
-                      />
-                    }
-                    textSize={text}
-                  />
-                ) : null}
-
-                {canDelete ? (
-                  <Action
-                    label="Delete"
-                    onPress={requestDelete}
-                    icon={<SvgIcon Icon={DeleteIconSvg} size={icon} tint={Colors?.danger ?? '#c00'} />}
-                    textSize={text}
-                    danger
-                  />
-                ) : null}
-              </View>
-            </View>
-
-            {confirmDeleteOpen ? (
-              <Pressable
-                style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}
-                onPress={() => setConfirmDeleteOpen(false)}
-              >
-                <Pressable
-                  onPress={() => {}}
-                  style={[
-                    modalStyles.confirmCard,
-                    { width: cardW, borderRadius: radius, backgroundColor: Colors?.background ?? '#fff' },
-                  ]}
-                >
-                  <BlurView tint="light" intensity={28} style={StyleSheet.absoluteFill} />
-                  <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFFC4' }]} />
-
-                  <Text style={[modalStyles.confirmTitle, { color: Colors?.textPrimary ?? '#111' }]}>
-                    Delete Image
-                  </Text>
-                  <Text style={[modalStyles.confirmBody, { color: Colors?.textSecondary ?? '#666' }]}>
-                    Are you sure you want to delete this image?
-                  </Text>
-
-                  <View style={modalStyles.confirmRow}>
-                    <TouchableOpacity
-                      onPress={() => setConfirmDeleteOpen(false)}
-                      activeOpacity={0.85}
-                      style={modalStyles.confirmBtn}
-                    >
-                      <Text style={[modalStyles.confirmBtnText, { color: themePrimary() }]}>Cancel</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={() => {
-                        setConfirmDeleteOpen(false);
-                        onClose?.({ action: 'delete', id: image.id });
-                      }}
-                      activeOpacity={0.85}
-                      style={modalStyles.confirmBtn}
-                    >
-                      <Text style={[modalStyles.confirmBtnText, { color: themePrimary() }]}>Delete</Text>
-                    </TouchableOpacity>
-                  </View>
-                </Pressable>
-              </Pressable>
-            ) : null}
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
 
 export default function DynamicGallery() {
   const router = useRouter();
@@ -1550,63 +1204,25 @@ const handleFacialRecognition = useCallback(() => {
         </View>
       )}
 
-      <Modal
+      <BulkDeleteConfirmModal
         visible={confirmBulkDeleteOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setConfirmBulkDeleteOpen(false)}
-      >
-        <Pressable
-          style={[modalStyles.overlay, { backgroundColor: 'rgba(0,0,0,0.55)' }]}
-          onPress={() => setConfirmBulkDeleteOpen(false)}
-        >
-          <Pressable
-            onPress={() => {}}
-            style={[
-              modalStyles.confirmCard,
-              { width: Math.min(W - 48, 320), borderRadius: 18, backgroundColor: Colors?.background ?? '#fff' },
-            ]}
-          >
-            <Text style={[modalStyles.confirmTitle, { color: Colors?.textPrimary ?? '#111' }]}>
-              Delete selected photos
-            </Text>
-            <Text style={[modalStyles.confirmBody, { color: Colors?.textSecondary ?? '#666' }]}>
-              Delete {selectedNumericIds.length} photo(s)?
-            </Text>
-
-            <View style={modalStyles.confirmRow}>
-              <TouchableOpacity
-                onPress={() => setConfirmBulkDeleteOpen(false)}
-                activeOpacity={0.85}
-                style={modalStyles.confirmBtn}
-              >
-                <Text style={[modalStyles.confirmBtnText, { color: themePrimary() }]}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={async () => {
-                  setConfirmBulkDeleteOpen(false);
-                  try {
-                    for (const id of selectedNumericIds) {
-                      await deleteByIdWithRefund(id);
-                    }
-                  } catch (e) {
-                    console.log('Delete selected error:', e);
-                    Alert.alert('Delete failed', String(e?.message || e));
-                  } finally {
-                    setSelectedKeys([]);
-                    setSelectMode(false);
-                  }
-                }}
-                activeOpacity={0.85}
-                style={modalStyles.confirmBtn}
-              >
-                <Text style={[modalStyles.confirmBtnText, { color: themePrimary() }]}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        onClose={() => setConfirmBulkDeleteOpen(false)}
+        onConfirm={async () => {
+          setConfirmBulkDeleteOpen(false);
+          try {
+            for (const id of selectedNumericIds) {
+              await deleteByIdWithRefund(id);
+            }
+          } catch (e) {
+            Alert.alert('Delete failed', String(e?.message || e));
+          } finally {
+            setSelectedKeys([]);
+            setSelectMode(false);
+          }
+        }}
+        count={selectedNumericIds.length}
+        width={Math.min(W - 48, 320)}
+      />
 
       <DynamicImageHoldModal
         visible={holdModalVisible}
@@ -1659,194 +1275,4 @@ const handleFacialRecognition = useCallback(() => {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
 
-  galleryHeaderCard: {
-    marginTop: 0,
-    marginLeft: 0,
-    marginRight: 0,
-    alignSelf: 'stretch',
-    borderRadius: 0,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
-  },
-
-  galleryTopBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  eventTitle: { fontWeight: '800', textAlign: 'center' },
-
-
-
-
-
-  uploadCircle: {
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
-  },
-
-  uploadLabel: { fontWeight: '700', textAlign: 'center' },
-
-floatingStack: {
-  position: 'absolute',
-  zIndex: 999,
-  elevation: 999,
-  alignItems: 'center',
-},
-
-floatingGroup: {
-  alignItems: 'center',
-  justifyContent: 'center',
-},
-
-uploadCard: {
-  backgroundColor: 'transparent',
-  justifyContent: 'flex-start',
-  alignItems: 'center',
-  shadowColor: '#000',
-  shadowOpacity: 0.12,
-  shadowRadius: 14,
-  shadowOffset: { width: 0, height: 10 },
-},
-
-groupCard: {
-  overflow: 'hidden',
-},
-
-facialCard: {
-  overflow: 'hidden',
-},
-  facialCircleWrap: {
-    backgroundColor: '#fff',
-  },
-
-  facialLabelText: {
-    lineHeight: 12,
-    textAlign: 'center',
-  },
-
-  videoBadge: {
-    position: 'absolute',
-    left: 8,
-    bottom: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-  videoBadgeText: {
-    color: '#fff',
-    fontWeight: '900',
-    fontSize: 10,
-    letterSpacing: 0.4,
-  },
-
-  selOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'flex-start',
-    alignItems: 'flex-end',
-    padding: 8,
-    backgroundColor: 'rgba(0,0,0,0.00)',
-  },
-  selOverlayOn: { backgroundColor: 'rgba(0,0,0,0.18)' },
-  selBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-  },
-
-  bottomBarWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    backgroundColor: BAR_BG,
-  },
-  bottomBar: {
-    width: '100%',
-    height: '100%',
-    overflow: 'hidden',
-    backgroundColor: BAR_BG,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 14,
-  },
-  bottomRow: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-evenly',
-  },
-  bottomBtn: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 10 },
-  bottomText: { marginTop: 3, fontWeight: '700', fontSize: 11 },
-});
-
-const modalStyles = StyleSheet.create({
-  overlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-
-  imageShadow: {
-    shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 18,
-    backgroundColor: 'transparent',
-  },
-
-  box: {
-    shadowColor: '#000',
-    shadowOpacity: 0.16,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 18,
-  },
-
-  actionBar: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-evenly',
-    alignItems: 'center',
-    paddingVertical: 0,
-  },
-  actionText: { marginTop: 2, fontWeight: '700' },
-  actionItem: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-
-  confirmCard: {
-    overflow: 'hidden',
-    backgroundColor: '#fff',
-    padding: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 18,
-  },
-  confirmTitle: { fontWeight: '900', fontSize: 16 },
-  confirmBody: { marginTop: 8, fontSize: 13, fontWeight: '600' },
-  confirmRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 14 },
-  confirmBtn: { paddingVertical: 10, paddingHorizontal: 12 },
-  confirmBtnText: { fontWeight: '900', fontSize: 14 },
-});
