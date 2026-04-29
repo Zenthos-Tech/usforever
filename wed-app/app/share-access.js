@@ -26,6 +26,7 @@ import CalendarIcon from '../assets/images/calendar.svg';
 import CloseIcon from '../assets/images/close.svg';
 import ArrowIcon from '../assets/images/downicon2.svg';
 import { useWedding } from '../context/WeddingContext';
+import { formatSelectedDate } from '../utils/shareDuration';
 import ShareModal from './share-link';
 
 const clamp = (v, min, max) => Math.max(min, Math.min(v, max));
@@ -269,15 +270,9 @@ export default function ShareAccessModal({
     setShowDropdown(open);
   };
 
-  const formatSelectedDate = (d) => {
-    const parts = String(d || '').split('-');
-    if (parts.length !== 3) return d;
-    const [dd, mm, yyyy] = parts;
-    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    const monthName = months[parseInt(mm, 10) - 1] || mm;
-    return `${parseInt(dd, 10)} ${monthName} ${yyyy}`;
-  };
-
+  // formatSelectedDate is imported from utils/shareDuration.js. Wrapping it
+  // in a getDurationLabel here keeps the previous "3 Days" label rather than
+  // collapsing to the absolute date — the dropdown UI prefers the literal.
   const getDurationLabel = () => {
     if (duration === '3days') return '3 Days';
     if (duration === 'nolimit') return 'No Limit';

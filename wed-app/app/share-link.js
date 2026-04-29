@@ -24,6 +24,10 @@ import ShareIcon from '../assets/images/sharelink.svg';
 
 import ShareIcon2 from '../assets/images/link2.svg';
 import { API_URL } from '../utils/api';
+import {
+  computeExpiresAtISO,
+  formatPrettyDate,
+} from '../utils/shareDuration';
 
 const AUTH_TOKEN_KEY = 'USFOREVER_AUTH_TOKEN_V1';
 
@@ -52,43 +56,12 @@ const joinUrl = (base, path) => {
 };
 
 
-function parseSelectedDateToISO(selectedDate) {
-  const s = String(selectedDate || '').trim();
-  const parts = s.split('-').map((x) => parseInt(x, 10));
-  if (parts.length !== 3) return null;
-  const [dd, mm, yyyy] = parts;
-  if (!dd || !mm || !yyyy) return null;
-  const d = new Date(Date.UTC(yyyy, mm - 1, dd, 23, 59, 59));
-  return d.toISOString();
-}
-
-function computeExpiresAtISO(duration, selectedDate) {
-  if (duration === 'nolimit') return null;
-  if (duration === '3days') {
-    const d = new Date();
-    d.setDate(d.getDate() + 3);
-    return d.toISOString();
-  }
-  if (duration === 'date') return parseSelectedDateToISO(selectedDate);
-  return null;
-}
+// Date helpers live in utils/shareDuration.js — used by share-access.js too.
 
 function addDays(d, days) {
   const x = new Date(d);
   x.setDate(x.getDate() + Number(days || 0));
   return x;
-}
-
-function formatPrettyDate(d) {
-  if (!d || !(d instanceof Date) || isNaN(d.getTime())) return '';
-  try {
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-  } catch {
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    return `${dd}-${mm}-${yyyy}`;
-  }
 }
 
 
