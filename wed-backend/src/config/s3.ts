@@ -3,7 +3,10 @@ import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/clien
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from './env';
 
-const READ_URL_EXPIRES_SECONDS = 60 * 60 * 24 * 7; // 7 days
+// Signed read URLs expire after 1 hour. Clients re-fetch from the API to get
+// fresh URLs as they scroll/resume — long-lived signatures meant a revoked
+// share-link's URLs would still resolve for the rest of the week.
+const READ_URL_EXPIRES_SECONDS = 60 * 60;
 
 // Legacy AWS SDK S3 client (used for presign + delete)
 export const s3Legacy = new AWS.S3({

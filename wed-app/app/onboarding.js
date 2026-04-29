@@ -109,16 +109,21 @@ const bottomExtra = clamp(t.H * 0.02, 8, 16);
 
   const onScrollToIndexFailed = useRef(() => {}).current;
 
-  // Auto-advance
+  // Auto-advance — read the latest rawIndex via a ref instead of putting it in
+  // the dep array, otherwise the interval is destroyed and recreated on every
+  // tick. (Previous behaviour: jittery; useEffect cleanup ran every cycle.)
+  const rawIndexRef = useRef(rawIndex);
+  rawIndexRef.current = rawIndex;
+
   useEffect(() => {
     const intervalMs = Math.round(t.ms4 || 3000);
     const timer = setInterval(() => {
-      const nextRaw = rawIndex + 1;
+      const nextRaw = rawIndexRef.current + 1;
       listRef.current?.scrollToOffset({ offset: carouselW * nextRaw, animated: true });
     }, intervalMs);
 
     return () => clearInterval(timer);
-  }, [rawIndex, carouselW, t.ms4]);
+  }, [carouselW, t.ms4]);
 
   // Wrap handling with no “flash”
   const onMomentumScrollEnd = (e) => {

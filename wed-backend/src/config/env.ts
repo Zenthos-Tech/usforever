@@ -31,8 +31,9 @@ export const env = {
   MSG91_TEMPLATE_ID: envStr('MSG91_TEMPLATE_ID', '1007939744395319169'),
   MSG91_SENDER_ID: envStr('MSG91_SENDER_ID', 'CSMTCH'),
 
-  // JWT
-  JWT_SECRET: envStr('JWT_SECRET', 'change-me-in-production'),
+  // JWT — JWT_SECRET is required and must not be the placeholder value.
+  // See assertion in assertSecureConfig() below.
+  JWT_SECRET: envStr('JWT_SECRET'),
   JWT_EXPIRES_IN: envStr('JWT_EXPIRES_IN', '30d'),
 
   // Photographer
@@ -47,6 +48,9 @@ export const env = {
   APP_SCHEME: envStr('APP_SCHEME', 'usforever'),
   EXPO_GO_BASE: envStr('EXPO_GO_BASE'),
   PUBLIC_APP_BASE_URL: envStr('PUBLIC_APP_BASE_URL'),
+  // Comma-separated list of allowed CORS origins. Empty in development
+  // (allows all); must be set in production.
+  CORS_ALLOWED_ORIGINS: envStr('CORS_ALLOWED_ORIGINS'),
 
   // Storage (per-couple plan cap, in GiB; default 300 GiB)
   STORAGE_CAP_GIB: envInt('STORAGE_CAP_GIB', 300),
@@ -62,3 +66,23 @@ export const env = {
   PORT: envInt('PORT', 1337),
   HOST: envStr('HOST', '0.0.0.0'),
 };
+
+// Fail fast on misconfigured secrets so we can never boot with a forgeable
+// token. Throwing here aborts before the HTTP server starts listening.
+const PLACEHOLDER_JWT_SECRET = 'change-me-in-production';
+
+export function assertSecureConfig(): void {
+  if (!env.JWT_SECRET || env.JWT_SECRET === PLACEHOLDER_JWT_SECRET) {
+    throw new Error(
+      'JWT_SECRET is missing or set to the placeholder. Set a strong, random ' +
+        'JWT_SECRET in the environment before starting the server.'
+    );
+  }
+  if (env.JWT_SECRET.length < 32) {
+    throw new Error(
+      'JWT_SECRET is too short — use at least 32 characters of entropy.'
+    );
+  }
+}
+
+assertSecureConfig();

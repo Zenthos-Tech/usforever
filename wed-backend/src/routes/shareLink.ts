@@ -42,12 +42,18 @@ function isExpired(d: any): boolean {
 
 /**
  * Returns the public base URL for generating share links.
- * Prefers the configured PUBLIC_APP_BASE_URL env var over deriving from
- * request headers to prevent host-header injection attacks.
+ *
+ * Prefers the configured PUBLIC_APP_BASE_URL env var. In production we refuse
+ * to derive the URL from the request's Host header, which is attacker-
+ * controlled and would let a third party poison generated share links. In
+ * development we fall back to the request host for convenience.
  */
 function getPublicBase(req: Request): string {
   const configured = env.PUBLIC_APP_BASE_URL.replace(/\/+$/, '');
   if (configured) return configured;
+  if (process.env.NODE_ENV === 'production') {
+    throw Object.assign(new Error('PUBLIC_APP_BASE_URL is not configured'), { status: 500 });
+  }
   return `${req.protocol}://${req.get('host')}`;
 }
 
@@ -147,28 +153,45 @@ async function getWeddingDisplay(wid: string) {
 async function getVisibleAlbums(wid: string) {
   if (!wid) return [];
   try {
-    const albums = await Album.find({
-      weddingId: wid,
-      hidden: { $ne: true },
-      deletedByUser: { $ne: true },
-    })
-      .select('title')
-      .sort({ createdAt: 1 })
-      .limit(200)
-      .lean();
+    // Pull the cover image_url with the album in one aggregation, then sign
+    // URLs application-side. Avoids N+1 Photo.findOne per album.
+    const albums = await Album.aggregate([
+      {
+        $match: {
+          weddingId: wid,
+          hidden: { $ne: true },
+          deletedByUser: { $ne: true },
+        },
+      },
+      { $sort: { createdAt: 1 } },
+      { $limit: 200 },
+      {
+        $lookup: {
+          from: Photo.collection.name,
+          let: { aid: '$_id' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$albumId', '$$aid'] } } },
+            { $sort: { createdAt: -1, _id: -1 } },
+            { $limit: 1 },
+            { $project: { image_url: 1 } },
+          ],
+          as: 'cover',
+        },
+      },
+      {
+        $project: {
+          title: 1,
+          coverImageUrl: { $ifNull: [{ $arrayElemAt: ['$cover.image_url', 0] }, null] },
+        },
+      },
+    ]);
 
     const withCovers = await Promise.all(
-      albums.map(async (a) => {
+      albums.map(async (a: any) => {
         let coverUrl: string | null = null;
-        try {
-          const firstPhoto = await Photo.findOne({ albumId: a._id })
-            .sort({ createdAt: -1 })
-            .select('image_url')
-            .lean();
-          if (firstPhoto?.image_url) {
-            coverUrl = await buildSignedReadUrl(String(firstPhoto.image_url));
-          }
-        } catch {}
+        if (a.coverImageUrl) {
+          try { coverUrl = await buildSignedReadUrl(String(a.coverImageUrl)); } catch {}
+        }
         return { id: a._id, title: a.title, coverUrl };
       })
     );
@@ -489,26 +512,45 @@ router.get('/photos', async (req: Request, res: Response) => {
       }
     }
 
-    // Paginated photo fetch
-    const page = Math.max(1, parseInt(String(req.query?.page || '1'), 10) || 1);
+    // Cursor pagination — same pattern as GET /api/photos so deep paging stays
+    // O(limit) instead of O(skip). The cursor is the _id of the last item from
+    // the previous page; with the (albumId, createdAt desc, _id desc) compound
+    // index this remains an index-scan.
     const limit = Math.min(200, Math.max(1, parseInt(String(req.query?.limit || '50'), 10) || 50));
-    const skip = (page - 1) * limit;
+    const cursor = String(req.query?.cursor || '').trim();
 
-    const photos = await Photo.find({ albumId })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
+    const filter: any = { albumId };
+    if (cursor) {
+      const cursorDoc = await Photo.findById(cursor).select('createdAt').lean();
+      if (cursorDoc) {
+        filter.$or = [
+          { createdAt: { $lt: cursorDoc.createdAt } },
+          { createdAt: cursorDoc.createdAt, _id: { $lt: cursorDoc._id } },
+        ];
+      }
+    }
+
+    const photos = await Photo.find(filter)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1)
       .lean();
 
+    const hasMore = photos.length > limit;
+    const page = hasMore ? photos.slice(0, limit) : photos;
+    const nextCursor = hasMore ? String(page[page.length - 1]._id) : null;
+
     const result = await Promise.all(
-      photos.map(async (p) => {
+      page.map(async (p) => {
         const key = String(p.image_url || '').trim();
         if (!key) return null;
         return { id: p._id, uri: await buildSignedReadUrl(key), albumId };
       })
     );
 
-    return res.json({ data: result.filter(Boolean), meta: { albumId, page, limit } });
+    return res.json({
+      data: result.filter(Boolean),
+      meta: { albumId, limit, nextCursor, hasMore },
+    });
   } catch (err: any) {
     console.error('[shareLink] /photos error:', err);
     return res.status(500).json({ error: 'Internal server error' });
