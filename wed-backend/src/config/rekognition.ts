@@ -1,4 +1,5 @@
 import AWS from 'aws-sdk';
+import crypto from 'crypto';
 import { env } from './env';
 import { Wedding } from '../models/Wedding';
 import { Photo } from '../models/Photo';
@@ -10,7 +11,10 @@ const rekognition = new AWS.Rekognition({
 });
 
 const normalizePhone = (v: any) => String(v ?? '').replace(/[^\d]/g, '').trim();
-const randomSuffix = () => Math.random().toString(36).slice(2, 8).toUpperCase();
+// 6-char random suffix for the Rekognition collection name. Using a CSPRNG
+// here so two concurrent creates for the same wedding cannot land on the same
+// suffix (still rare with Math.random, but CSPRNG removes the worry entirely).
+const randomSuffix = () => crypto.randomBytes(4).toString('hex').slice(0, 6).toUpperCase();
 
 export const buildCollectionName = (wedding: { _id: any; phone: string }) => {
   const phone = normalizePhone(wedding.phone);

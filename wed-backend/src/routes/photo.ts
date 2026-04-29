@@ -83,6 +83,7 @@ router.post('/presign', async (req: AuthRequest, res: Response) => {
     const phone = normalizePhone(wedding.phone);
     const coupleFolder = buildCoupleFolder(coupleSlug, phone, 0);
 
+    if (!isValidObjectId(albumId)) return res.status(400).json({ error: 'invalid albumId' });
     const album = await Album.findById(albumId).select('weddingId title').lean();
     if (!album) return res.status(400).json({ error: 'album not found' });
     if (String(album.weddingId) !== String(weddingId)) {
@@ -349,8 +350,10 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const uid = String(req.query?.userId || req.query?.uploaded_by || '').trim();
     if (uid) filter.uploadedById = uid;
 
-    // get total count before applying cursor filter
-    const totalCount = await Photo.countDocuments(filter);
+    // Only run countDocuments on the first page (no cursor). On a 10k-photo
+    // album this skips an expensive query for every "load more" tap; the
+    // client already has the count from page 1 of the session.
+    const totalCount = cursor ? null : await Photo.countDocuments(filter);
 
     // cursor is the _id of the last item from the previous page
     // since we sort by createdAt desc, we fetch items created before the cursor item

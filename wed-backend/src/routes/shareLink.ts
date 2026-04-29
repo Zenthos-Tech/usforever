@@ -8,10 +8,18 @@ import { ShareLink } from '../models/ShareLink';
 import { Album } from '../models/Album';
 import { Wedding } from '../models/Wedding';
 import { Photo } from '../models/Photo';
+import { PasscodeAttempt } from '../models/PasscodeAttempt';
 import { escapeHtml } from '../utils/helpers';
 import { authRequired } from '../middleware/auth';
+import { renderPage } from './shareLinkPage';
 
-const router = Router();
+// Four sub-routers, one per public URL prefix. index.ts mounts each at its
+// proper Express base path so we don't need the old `req.url` rewriting (which
+// dropped repeated query params via URLSearchParams.toString()).
+const router = Router();              // /api/share-links/{generate,resolve/:slug,/}
+const shareGateRouter = Router();     // /api/s/:slug
+const shareRedirectRouter = Router(); // /api/r
+const sharePhotosRouter = Router();   // /api/share/photos
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 // ─── Token helpers ────────────────────────────────────────────────────────────
@@ -42,12 +50,18 @@ function isExpired(d: any): boolean {
 
 /**
  * Returns the public base URL for generating share links.
- * Prefers the configured PUBLIC_APP_BASE_URL env var over deriving from
- * request headers to prevent host-header injection attacks.
+ *
+ * Prefers the configured PUBLIC_APP_BASE_URL env var. In production we refuse
+ * to derive the URL from the request's Host header, which is attacker-
+ * controlled and would let a third party poison generated share links. In
+ * development we fall back to the request host for convenience.
  */
 function getPublicBase(req: Request): string {
   const configured = env.PUBLIC_APP_BASE_URL.replace(/\/+$/, '');
   if (configured) return configured;
+  if (process.env.NODE_ENV === 'production') {
+    throw Object.assign(new Error('PUBLIC_APP_BASE_URL is not configured'), { status: 500 });
+  }
   return `${req.protocol}://${req.get('host')}`;
 }
 
@@ -94,24 +108,51 @@ function verifyPhotoJwt(token: string): any {
   return d;
 }
 
-// ─── Passcode rate limiter (in-memory) ───────────────────────────────────────
-// Limits brute-force attempts against passcode-protected links.
-// Resets per slug after PASSCODE_WINDOW_MS.
+// ─── Passcode rate limiter (Mongo, TTL-backed) ───────────────────────────────
+// Limits brute-force attempts against passcode-protected links. Backed by the
+// PasscodeAttempt collection with a TTL on `resetAt` so windows expire on
+// their own. Survives restarts and works across multiple app instances.
 
-const passcodeAttempts = new Map<string, { count: number; resetAt: number }>();
 const PASSCODE_LIMIT = 10;
+const PASSCODE_IP_LIMIT = 30;
 const PASSCODE_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
 
-function checkPasscodeRateLimit(slug: string): boolean {
+async function checkPasscodeRateLimit(slug: string): Promise<boolean> {
   const now = Date.now();
-  const entry = passcodeAttempts.get(slug);
-  if (!entry || entry.resetAt < now) {
-    passcodeAttempts.set(slug, { count: 1, resetAt: now + PASSCODE_WINDOW_MS });
-    return true;
-  }
-  if (entry.count >= PASSCODE_LIMIT) return false;
-  entry.count++;
-  return true;
+  const newReset = new Date(now + PASSCODE_WINDOW_MS);
+
+  // Reset the window if the existing row's resetAt is in the past — atomic
+  // upsert keyed on (slug, resetAt < now) followed by an unconditional $inc.
+  await PasscodeAttempt.updateOne(
+    { slug, resetAt: { $lt: new Date(now) } },
+    { $set: { count: 0, resetAt: newReset } }
+  );
+  const updated = await PasscodeAttempt.findOneAndUpdate(
+    { slug },
+    {
+      $inc: { count: 1 },
+      $setOnInsert: { resetAt: newReset },
+    },
+    { upsert: true, new: true }
+  );
+
+  return updated.count <= PASSCODE_LIMIT;
+}
+
+function clientIp(req: Request): string {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0]?.trim();
+  return fwd || req.ip || 'unknown';
+}
+
+function checkPasscodeRateLimit(slug: string, req: Request): boolean {
+  const slugKey = `slug:${slug || '_'}`;
+  const ipKey = `ip:${clientIp(req)}`;
+  // Both counters get bumped regardless of slug validity. A request for an
+  // unknown slug still consumes from the IP budget, so brute-forcing slugs
+  // burns the same per-IP budget as brute-forcing passcodes.
+  const slugOk = bumpAttempts(slugKey, PASSCODE_LIMIT);
+  const ipOk = bumpAttempts(ipKey, PASSCODE_IP_LIMIT);
+  return slugOk && ipOk;
 }
 
 // ─── DB helpers ───────────────────────────────────────────────────────────────
@@ -147,28 +188,45 @@ async function getWeddingDisplay(wid: string) {
 async function getVisibleAlbums(wid: string) {
   if (!wid) return [];
   try {
-    const albums = await Album.find({
-      weddingId: wid,
-      hidden: { $ne: true },
-      deletedByUser: { $ne: true },
-    })
-      .select('title')
-      .sort({ createdAt: 1 })
-      .limit(200)
-      .lean();
+    // Pull the cover image_url with the album in one aggregation, then sign
+    // URLs application-side. Avoids N+1 Photo.findOne per album.
+    const albums = await Album.aggregate([
+      {
+        $match: {
+          weddingId: wid,
+          hidden: { $ne: true },
+          deletedByUser: { $ne: true },
+        },
+      },
+      { $sort: { createdAt: 1 } },
+      { $limit: 200 },
+      {
+        $lookup: {
+          from: Photo.collection.name,
+          let: { aid: '$_id' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$albumId', '$$aid'] } } },
+            { $sort: { createdAt: -1, _id: -1 } },
+            { $limit: 1 },
+            { $project: { image_url: 1 } },
+          ],
+          as: 'cover',
+        },
+      },
+      {
+        $project: {
+          title: 1,
+          coverImageUrl: { $ifNull: [{ $arrayElemAt: ['$cover.image_url', 0] }, null] },
+        },
+      },
+    ]);
 
     const withCovers = await Promise.all(
-      albums.map(async (a) => {
+      albums.map(async (a: any) => {
         let coverUrl: string | null = null;
-        try {
-          const firstPhoto = await Photo.findOne({ albumId: a._id })
-            .sort({ createdAt: -1 })
-            .select('image_url')
-            .lean();
-          if (firstPhoto?.image_url) {
-            coverUrl = await buildSignedReadUrl(String(firstPhoto.image_url));
-          }
-        } catch {}
+        if (a.coverImageUrl) {
+          try { coverUrl = await buildSignedReadUrl(String(a.coverImageUrl)); } catch {}
+        }
         return { id: a._id, title: a.title, coverUrl };
       })
     );
@@ -179,54 +237,7 @@ async function getVisibleAlbums(wid: string) {
   }
 }
 
-// ─── HTML redirect page ───────────────────────────────────────────────────────
-
-function buildAndroidIntentUrl(appUrl: string): string {
-  if (!appUrl.startsWith('usforever://')) return '';
-  const path = appUrl.slice('usforever://'.length);
-  // package= targets the exact app, skipping any chooser dialog
-  // S.browser_fallback_url keeps Chrome happy if the app is not installed
-  const fallback = encodeURIComponent(appUrl);
-  return `intent://${path}#Intent;scheme=usforever;package=com.anonymous.WeddingApp;S.browser_fallback_url=${fallback};end`;
-}
-
-function renderPage(args: {
-  title?: string;
-  appUrl: string;
-  expoUrl?: string;
-  androidIntentUrl?: string;
-  error?: string;
-}): string {
-  const st = escapeHtml(args.title || 'Open in UsForever');
-  const se = args.error
-    ? `<div style="color:#c00;font-size:13px">${escapeHtml(args.error)}</div>`
-    : '';
-  const intentUrl = args.androidIntentUrl || buildAndroidIntentUrl(args.appUrl);
-  const saIntent = escapeHtml(intentUrl || args.appUrl);
-
-  // Use Android intent URL with explicit package — bypasses chooser entirely.
-  // Falls back to plain usforever:// on iOS/desktop.
-  const iUrl = JSON.stringify(intentUrl);
-  const aUrl = JSON.stringify(args.appUrl);
-  const headScript = args.appUrl
-    ? '<script>(function(){' +
-      'var isAnd=/android/i.test(navigator.userAgent);' +
-      'var u=isAnd?' + iUrl + ':' + aUrl + ';' +
-      'if(u){window.location.replace(u);}' +
-      '})();</script>'
-    : '';
-
-  return (
-    `<!doctype html><html><head><meta charset="utf-8"/>` +
-    `<meta name="viewport" content="width=device-width,initial-scale=1"/>` +
-    `<title>${st}</title>` +
-    headScript +
-    `<style>body{font-family:system-ui;margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}.c{max-width:500px;border:1px solid #eee;border-radius:16px;padding:20px}a.b{display:block;padding:12px;border-radius:12px;text-align:center;background:#111;color:#fff;font-weight:700;text-decoration:none;margin-top:10px}</style>` +
-    `</head><body><div class="c"><h3>${st}</h3>${se}` +
-    (args.appUrl ? `<a class="b" href="${saIntent}">Open in UsForever</a>` : '') +
-    `</div></body></html>`
-  );
-}
+// HTML redirect page extracted into routes/shareLinkPage.ts.
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
@@ -348,13 +359,20 @@ router.post('/resolve/:slug', async (req: Request, res: Response) => {
     const rawToken = String((req.query?.t as string) || req.body?.token || '').trim();
     if (!rawToken) return res.status(401).json({ error: 'Token required' });
 
+    // Bump rate-limit counters before the slug lookup so probing for valid
+    // (slug, token) pairs consumes the same per-IP budget as guessing
+    // passcodes. Returns 429 once either the per-slug or per-IP cap is hit.
+    if (!checkPasscodeRateLimit(slug, req)) {
+      return res.status(429).json({ error: 'Too many attempts, try again later' });
+    }
+
     const tokenHash = hashToken(rawToken);
     const link = await ShareLink.findOne({ slug, tokenHash }).populate('albumId', 'title').lean();
     if (!link) return res.status(404).json({ error: 'Invalid link' });
     if (isExpired(link.expiresAt)) return res.status(403).json({ error: 'Link expired' });
 
     if (link.requiresPasscode) {
-      if (!checkPasscodeRateLimit(slug)) {
+      if (!(await checkPasscodeRateLimit(slug))) {
         return res.status(429).json({ error: 'Too many passcode attempts, try again later' });
       }
       const p = String(req.body?.passcode ?? '').trim();
@@ -419,7 +437,7 @@ router.post('/resolve/:slug', async (req: Request, res: Response) => {
 });
 
 // GET /api/share/photos
-router.get('/photos', async (req: Request, res: Response) => {
+sharePhotosRouter.get('/photos', async (req: Request, res: Response) => {
   try {
     let albumId = '';
     const bearer = String(req.headers.authorization || '').trim();
@@ -452,6 +470,11 @@ router.get('/photos', async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'Provide Bearer token or slug+t' });
       }
 
+      // Same per-IP + per-slug throttle as /resolve — see checkPasscodeRateLimit.
+      if (!checkPasscodeRateLimit(slug, req)) {
+        return res.status(429).json({ error: 'Too many attempts, try again later' });
+      }
+
       const tokenHash = hashToken(rawToken);
       const link = await ShareLink.findOne({ slug, tokenHash }).lean();
       if (!link) return res.status(404).json({ error: 'Invalid link' });
@@ -460,7 +483,7 @@ router.get('/photos', async (req: Request, res: Response) => {
 
       // Passcode check applies to all paths, not just /resolve
       if (link.requiresPasscode) {
-        if (!checkPasscodeRateLimit(slug)) {
+        if (!(await checkPasscodeRateLimit(slug))) {
           return res.status(429).json({ error: 'Too many attempts, try again later' });
         }
         const p = String((req.query?.passcode as string) || '').trim();
@@ -489,26 +512,45 @@ router.get('/photos', async (req: Request, res: Response) => {
       }
     }
 
-    // Paginated photo fetch
-    const page = Math.max(1, parseInt(String(req.query?.page || '1'), 10) || 1);
+    // Cursor pagination — same pattern as GET /api/photos so deep paging stays
+    // O(limit) instead of O(skip). The cursor is the _id of the last item from
+    // the previous page; with the (albumId, createdAt desc, _id desc) compound
+    // index this remains an index-scan.
     const limit = Math.min(200, Math.max(1, parseInt(String(req.query?.limit || '50'), 10) || 50));
-    const skip = (page - 1) * limit;
+    const cursor = String(req.query?.cursor || '').trim();
 
-    const photos = await Photo.find({ albumId })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
+    const filter: any = { albumId };
+    if (cursor) {
+      const cursorDoc = await Photo.findById(cursor).select('createdAt').lean();
+      if (cursorDoc) {
+        filter.$or = [
+          { createdAt: { $lt: cursorDoc.createdAt } },
+          { createdAt: cursorDoc.createdAt, _id: { $lt: cursorDoc._id } },
+        ];
+      }
+    }
+
+    const photos = await Photo.find(filter)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1)
       .lean();
 
+    const hasMore = photos.length > limit;
+    const page = hasMore ? photos.slice(0, limit) : photos;
+    const nextCursor = hasMore ? String(page[page.length - 1]._id) : null;
+
     const result = await Promise.all(
-      photos.map(async (p) => {
+      page.map(async (p) => {
         const key = String(p.image_url || '').trim();
         if (!key) return null;
         return { id: p._id, uri: await buildSignedReadUrl(key), albumId };
       })
     );
 
-    return res.json({ data: result.filter(Boolean), meta: { albumId, page, limit } });
+    return res.json({
+      data: result.filter(Boolean),
+      meta: { albumId, limit, nextCursor, hasMore },
+    });
   } catch (err: any) {
     console.error('[shareLink] /photos error:', err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -516,7 +558,7 @@ router.get('/photos', async (req: Request, res: Response) => {
 });
 
 // GET /api/r
-router.get('/redirect', async (req: Request, res: Response) => {
+shareRedirectRouter.get('/', async (req: Request, res: Response) => {
   const slug = String((req.query?.slug as string) || '');
   const rawToken = String((req.query?.t as string) || '');
   if (!slug || !rawToken) return res.status(400).json({ error: 'slug and t required' });
@@ -530,7 +572,7 @@ router.get('/redirect', async (req: Request, res: Response) => {
 });
 
 // GET /api/s/:slug
-router.get('/:slug', async (req: Request, res: Response) => {
+shareGateRouter.get('/:slug', async (req: Request, res: Response) => {
   const slug = String(req.params.slug || '');
   const rawToken = String((req.query?.t as string) || '');
 
@@ -608,4 +650,10 @@ router.get('/', authRequired, async (req: Request, res: Response) => {
   }
 });
 
+export {
+  router as shareLinkRouter,
+  shareGateRouter,
+  shareRedirectRouter,
+  sharePhotosRouter,
+};
 export default router;
