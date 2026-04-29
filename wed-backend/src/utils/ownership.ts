@@ -9,7 +9,7 @@ export type OwnershipResult =
  * Resolve the wedding referenced by either weddingId or phone, then verify
  * that the authenticated user (linked via User.contact_no === Wedding.phone)
  * owns it. Used by every handler that mutates or reveals wedding-scoped
- * data — face search, wedding profile, album CRUD.
+ * data — face search, wedding profile, album CRUD, photo CRUD.
  */
 export async function loadOwnedWedding(
   userId: string,

@@ -83,12 +83,20 @@ function getApiBase() {
   return `${base}/api`;
 }
 
-async function apiFetch(path, options) {
+async function apiFetch(path, options = {}) {
   const baseApi = getApiBase();
   const p = String(path || '').startsWith('/') ? String(path) : `/${String(path)}`;
   const url = `${baseApi}${p}`;
 
-  const res = await fetch(url, options);
+  // Photo endpoints now require the user JWT — pull it from the same key
+  // verify.js writes after OTP login and forward it on every call.
+  const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+  const headers = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(options.headers || {}),
+  };
+
+  const res = await fetch(url, { ...options, headers });
   const raw = await res.text();
 
   let json = null;

@@ -38,7 +38,7 @@ Severity guide: **High** = exploitable / data loss / app crash, **Med** = real b
 
 ### Bugs / security (auth & access control)
 
-- [ ] **[Severity: High]** `wed-backend/src/routes/photo.ts` — entire `/api/photos/*` router is unauthenticated. Specifically:
+- [x] **[Severity: High]** `wed-backend/src/routes/photo.ts` — entire `/api/photos/*` router is unauthenticated. Specifically:
   - `POST /presign` (l. 15) — anyone can mint S3 PUT URLs into any couple's folder.
   - `POST /` (l. 51) — anyone can insert a `Photo` row with arbitrary `image_url`, `albumId`, `uploadedById`.
   - `POST /resolve-duplicate` (l. 199) — anyone can rewrite `image_url`/metadata of any photo by ID and trigger `deleteS3Object` on the previous key.
